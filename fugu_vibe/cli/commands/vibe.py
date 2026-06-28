@@ -34,7 +34,11 @@ console = Console()
 @click.option("--model", "-m", help="Model to use")
 @click.option("--effort", "-e", type=click.Choice(["high", "xhigh", "max"]), help="Reasoning effort")
 @click.option("--web-search", "-w", is_flag=True, help="Enable web search")
-@click.option("--no-viz", is_flag=True, help="Disable orchestration visualization")
+@click.option(
+    "--viz/--no-viz",
+    default=False,
+    help="Enable or disable orchestration visualization. Disabled by default for stable input.",
+)
 @click.option("--voice", "-v", is_flag=True, help="Enable voice input")
 @click.option("--unlimited", "-u", is_flag=True, help="Unlimited prompt mode (no guardrails)")
 @click.pass_context
@@ -43,7 +47,7 @@ def vibe_command(
     model: str | None,
     effort: str | None,
     web_search: bool,
-    no_viz: bool,
+    viz: bool,
     voice: bool,
     unlimited: bool,
 ) -> None:
@@ -58,6 +62,7 @@ def vibe_command(
         fugu-vibe vibe --model fugu-ultra       # Use Fugu Ultra
         fugu-vibe vibe --effort xhigh           # Maximum reasoning
         fugu-vibe vibe --web-search             # Enable web search
+        fugu-vibe vibe --viz                    # Enable dashboard visualization
         fugu-vibe vibe --voice                  # Enable voice control
         fugu-vibe vibe --unlimited              # No prompt restrictions
     """
@@ -72,13 +77,13 @@ def vibe_command(
         config.prompt.unlimited_mode = True
     
     # Run async session
-    asyncio.run(_vibe_session(config, web_search, no_viz, voice))
+    asyncio.run(_vibe_session(config, web_search, viz, voice))
 
 
 async def _vibe_session(
     config: Config,
     web_search: bool,
-    no_viz: bool,
+    viz_enabled: bool,
     voice_enabled: bool,
 ) -> None:
     """Main vibe session loop."""
@@ -93,7 +98,7 @@ async def _vibe_session(
     
     # Start dashboard
     dashboard = None
-    if not no_viz:
+    if viz_enabled:
         dashboard = OrchestrationDashboard(config, event_bus)
         await dashboard.start()
     
@@ -111,13 +116,13 @@ async def _vibe_session(
     # Prompt session for keyboard input
     session = PromptSession(
         message="> ",
-        multiline=True,
+        multiline=False,
         enable_suspend=True,
     )
     
     console.print("\n[bold cyan]🐡 Fugu Vibe Session Started[/bold cyan]")
-    console.print("Type your prompt and press Enter (Esc+Enter for multi-line)")
-    console.print("Commands: /status /tasks /quit /help\n")
+    console.print("Type your prompt and press Enter")
+    console.print("Commands: /status /tasks /quit /help  |  Exit: Ctrl+C or Ctrl+D\n")
     
     try:
         while True:
@@ -142,7 +147,7 @@ async def _vibe_session(
                 )
                 
             except KeyboardInterrupt:
-                continue
+                break
             except EOFError:
                 break
                 

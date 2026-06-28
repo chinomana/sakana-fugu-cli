@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from pathlib import Path
 
 import click
 import structlog
@@ -55,6 +56,14 @@ def print_banner() -> None:
 
 @click.group(invoke_without_command=True)
 @click.option("--config", "config_path", type=click.Path(), help="Path to config file")
+@click.option(
+    "--workspace",
+    "workspace_path",
+    "-C",
+    envvar="FUGU_VIBE_WORKSPACE",
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Run commands from this workspace directory",
+)
 @click.option("--api-key", envvar="SAKANA_API_KEY", help="Sakana API key")
 @click.option("--base-url", envvar="FUGU_VIBE_API_BASE_URL", help="Override API base URL for proxy/unofficial endpoints")
 @click.option("--model", default=None, help="Default model (fugu | fugu-ultra)")
@@ -62,8 +71,9 @@ def print_banner() -> None:
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.version_option(version="0.1.0")
 @click.pass_context
-def cli(ctx: click.Context, config_path: str | None, api_key: str | None, base_url: str | None,
-        model: str | None, effort: str | None, verbose: bool) -> None:
+def cli(ctx: click.Context, config_path: str | None, workspace_path: Path | None,
+        api_key: str | None, base_url: str | None, model: str | None,
+        effort: str | None, verbose: bool) -> None:
     """
     🐡 Fugu Vibe CLI — Specialized vibe coding for Sakana Fugu.
     
@@ -79,7 +89,13 @@ def cli(ctx: click.Context, config_path: str | None, api_key: str | None, base_u
         fugu-vibe vibe                          # Start interactive session
         fugu-vibe submit "Refactor auth" -p "..."  # Submit task
     """
-    # Load configuration
+    if workspace_path:
+        workspace = workspace_path.expanduser().resolve()
+        if not workspace.exists() or not workspace.is_dir():
+            raise click.ClickException(f"Workspace does not exist or is not a directory: {workspace}")
+        os.chdir(workspace)
+
+    # Load configuration from the selected workspace unless --config is provided.
     config = load_config(
         override_path=Path(config_path) if config_path else None
     )
@@ -98,6 +114,7 @@ def cli(ctx: click.Context, config_path: str | None, api_key: str | None, base_u
     ctx.ensure_object(dict)
     ctx.obj["config"] = config
     ctx.obj["verbose"] = verbose
+    ctx.obj["workspace"] = Path.cwd()
     
     # Setup logging
     if verbose:

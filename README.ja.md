@@ -1,166 +1,165 @@
-# 🐡 Fugu Vibe CLI
+# Fugu Vibe CLI
 
 [English](README.md) | [中文](README.zh.md) | **日本語**
 
-**Sakana Fugu** 専用の CLI ツール。非同期ボイスコントロール、エージェントオーケストレーション可視化、無制限プロンプトモードを搭載しています。
+Sakana Fugu スタイルの API をターミナルから使用するための Python CLI。インタラクティブプロンプト、オプションのオーケストレーション可視化、プロジェクトワークスペース選択、非同期タスク送信、Fugu 固有のリクエスト処理を提供します。
 
-> **Fugu** は Sakana AI の分散型マルチエージェント推論システムです。各リクエストを 1〜3 個の専門エージェントに動的にルーティングします。本 CLI は Fugu の独自アーキテクチャを最大限に活用します。
+> Sakana AI とは無関係。
 
-## ✨ 機能
+## 現在の状態
 
-| 機能 | 説明 |
-|---------|-------------|
-| 🧭 **オーケストレーション可視化** | リアルタイムダッシュボードで内部ルーティング決定、ワーカーアクティベーション、検証フェーズを表示 |
-| 🎤 **ボイスコントロール** | プッシュトゥトーク音声入力、VAD 自動セグメンテーション、Faster-Whisper ローカル STT |
-| ⚡ **非同期タスク** | git-worktree 分離による並列実行と DAG 依存関係管理 |
-| 🔓 **無制限モード** | セーフティガードレールを無効化し、制約なしのプロンプト制御を実現 |
-| 📡 **完全な API サポート** | Responses API およびすべての Fugu 固有パラメータに対応 |
-| 🔄 **ストリーム耐性** | 2 時間アイドルタイムアウト、自動再接続、Sakana 推奨のリトライポリシー |
+このプロジェクトは初期段階です。安定したパスは通常のテキストベース `vibe` セッションです。
 
-## 🚀 クイックスタート
+- テキスト入力：使用可能。
+- ワークスペース選択：`-C/--workspace` を介して使用可能。
+- オーケストレーションダッシュボード：`--viz` によるオプション；デフォルトは無効。フルスクリーン描画がターミナル入力を妨げる可能性があるため。
+- ボイスモード：現在はプレースホルダーのみ。レコーダー/STT の足場は存在するが、プッシュトゥトーク/バックグラウンドボイスインタラクションはまだ完全には実装されていない。
 
-### 必要条件
+## インストール
 
-- Python 3.11+（推奨: 3.12；macOS では 3.14 の `pyexpat` 既知の問題あり）
-- [uv](https://github.com/astral-sh/uv)（推奨）または pip 24+
-
-### ソースからインストール
+Python 3.11–3.13 を使用。Python 3.14 は macOS で依存関係/実行時の問題が発生する可能性がある。
 
 ```bash
-# クローン
 git clone https://github.com/fugu-vibe/fugu-vibe-cli.git
 cd fugu-vibe-cli
 
-# uv でインストール（推奨）
+# 推奨
 uv venv .venv --python 3.12
 source .venv/bin/activate
 uv pip install -e .
 
-# または pip
-pip install -e ".[all]"
+# または独自の仮想環境内で pip を使用
+pip install -e .
 ```
 
-### 認証
+## 認証
 
 ```bash
-# API キーを設定（https://console.sakana.ai/api-keys またはプロキシプロバイダから取得）
-export SAKANA_API_KEY="your-key-here"
+export SAKANA_API_KEY="your-key"
+```
 
-# またはインタラクティブログインコマンド
+または CLI を通じて保存：
+
+```bash
 fugu-vibe auth login
+fugu-vibe auth status
 ```
 
-### Vibe Coding を開始
+プロキシまたは非公式の互換エンドポイントを使用する場合：
 
 ```bash
-# フルダッシュボード付きのインタラクティブセッション
+export FUGU_VIBE_API_BASE_URL="https://your-proxy.example/v1"
+```
+
+またはコマンドごとに渡す：
+
+```bash
+fugu-vibe --base-url https://your-proxy.example/v1 vibe
+```
+
+## インタラクティブな使用
+
+安定したテキストセッションを開始：
+
+```bash
 fugu-vibe vibe
+```
 
-# Fugu Ultra モデル、最大推論強度
+セッション内：
+
+- プロンプトを入力して Enter を押す。
+- `/status` でタスク状態を表示。
+- `/tasks` でアクティブなタスクを一覧表示。
+- `/help` でセッションコマンドを表示。
+- `/quit`、`/q`、`/exit`、`Ctrl+C`、または `Ctrl+D` で終了。
+
+便利なオプション：
+
+```bash
 fugu-vibe vibe --model fugu-ultra --effort xhigh
-
-# カスタム / プロキシ API ベースURL
-fugu-vibe vibe --base-url https://your-proxy.com/v1
-
-# ボイスコントロール有効
-fugu-vibe vibe --voice
-
-# 無制限プロンプトモード（ガードレール無効）
+fugu-vibe vibe --web-search
 fugu-vibe vibe --unlimited
 ```
 
-## 📋 コマンドリファレンス
-
-### `vibe` — インタラクティブセッション
+必要な場合のみダッシュボードを有効化：
 
 ```bash
-fugu-vibe vibe [OPTIONS]
-
-オプション：
-  -m, --model TEXT       モデル（fugu | fugu-ultra）
-  -e, --effort CHOICE    推論強度：high | xhigh | max
-  --base-url TEXT        API ベースURL の上書き（プロキシ / 非公式エンドポイント用）
-  -w, --web-search       ウェブ検索ツールを有効化
-  --no-viz              可視化を無効化
-  -v, --voice           ボイス入力を有効化
-  -u, --unlimited       無制限プロンプトモード
+fugu-vibe vibe --viz
 ```
 
-### `submit` — 非同期タスク送信
+## 特定のワークスペースで作業
+
+サブコマンドの前に `-C/--workspace` を使用：
 
 ```bash
-fugu-vibe submit "タスク名" -p "プロンプト..." [OPTIONS]
-
-オプション：
-  -p, --prompt TEXT      必須：タスクプロンプト
-  -d, --description TEXT タスク説明
-  -m, --model TEXT       モデル上書き
-  -e, --effort CHOICE    推論強度
-  -w, --web-search       ウェブ検索を有効化
-  --depends-on TEXT      タスク依存関係（複数回指定可）
-  -f, --files TEXT       コンテキストファイル（複数回指定可）
-  --wait                 完了を待機
-  -u, --unlimited        無制限プロンプトモード
-
-# 例：
-fugu-vibe submit "認証のリファクタリング" -p "認証モジュールをリファクタリング..."
-fugu-vibe submit "テストを書く" -p "..." --depends-on <task-id>
-fugu-vibe submit "深い分析" -p "..." --effort xhigh --wait
+fugu-vibe -C /path/to/project vibe
 ```
 
-### `status` — タスク状態
+これはプロジェクト設定の読み込みと git/worktree 処理の初期化の前に、プロセスの作業ディレクトリを変更します。`vibe`、`submit`、`config` などのコマンドに影響します。
+
+環境変数で設定することも可能：
 
 ```bash
-fugu-vibe status [TASK_ID] [OPTIONS]
-
-オプション：
-  -w, --watch   ウォッチモード（自動更新）
-  --json        JSON 出力
-
-# 例：
-fugu-vibe status              # すべてのタスク
-fugu-vibe status <task-id>    # 特定のタスク
-fugu-vibe status -w           # リアルタイム監視
+export FUGU_VIBE_WORKSPACE="/path/to/project"
+fugu-vibe vibe
 ```
 
-### `attach` — 実行中タスクへアタッチ
+## 非同期タスク
+
+タスクを送信：
+
+```bash
+fugu-vibe submit "認証のリファクタリング" -p "認証モジュールをリファクタリングする"
+```
+
+完了を待つ：
+
+```bash
+fugu-vibe submit "コードを分析" -p "コードベースをレビュー" --wait
+```
+
+依存関係を使用：
+
+```bash
+fugu-vibe submit "テストを書く" -p "テストを追加" --depends-on <task-id>
+```
+
+状態を確認：
+
+```bash
+fugu-vibe status
+fugu-vibe status <task-id>
+fugu-vibe status --watch
+```
+
+アタッチまたはキャンセル：
 
 ```bash
 fugu-vibe attach <task-id>
+fugu-vibe cancel <task-id>
 ```
 
-### `voice` — ボイスモード
+## 設定
 
-```bash
-fugu-vibe voice [OPTIONS]
+設定は以下の順序で読み込まれ、優先度が高い順です：
 
-オプション：
-  -c, --continuous   連続ボイスモード
-  -w, --web-search   ウェブ検索を有効化
-  -m, --model TEXT   モデル上書き
-  -e, --effort       推論強度
-```
-
-### `config` — 設定管理
-
-```bash
-fugu-vibe config show              # 現在の設定を表示
-fugu-vibe config init              # プロジェクト設定を作成
-fugu-vibe config init --global     # グローバル設定を作成
-fugu-vibe config set model.default fugu-ultra
-fugu-vibe config path              # 設定ファイルの場所を表示
-```
-
-## ⚙️ 設定
-
-設定優先順位（高い順）：
 1. CLI コマンドライン引数
-2. 環境変数（`FUGU_VIBE_*`）
-3. プロジェクト設定（`.fugu-vibe.toml`）
-4. ユーザー設定（`~/.config/fugu-vibe/config.toml`）
+2. 環境変数
+3. プロジェクト設定：`.fugu-vibe.toml`
+4. ユーザー設定：`~/.config/fugu-vibe/config.toml`
 5. デフォルト値
 
-### `.fugu-vibe.toml` サンプル
+設定の作成または確認：
+
+```bash
+fugu-vibe config init
+fugu-vibe config init --global
+fugu-vibe config show
+fugu-vibe config path
+fugu-vibe config set model.default fugu-ultra
+```
+
+`.fugu-vibe.toml` の例：
 
 ```toml
 [api]
@@ -173,16 +172,6 @@ default = "fugu-ultra"
 reasoning_effort = "xhigh"
 max_output_tokens = 32768
 
-[orchestration]
-viz_mode = "full"
-show_token_usage = true
-infer_workers = true
-
-[voice]
-enabled = true
-push_to_talk_key = "space"
-silence_timeout = 2.0
-
 [tasks]
 max_parallel = 5
 use_git_worktree = true
@@ -192,145 +181,31 @@ auto_merge = true
 unlimited_mode = false
 ```
 
-### プロキシ / 非公式 API ベースURL の使用
+API キーまたは機密を含むローカル設定をコミットしないでください。
 
-リバースプロキシまたは非公式エンドポイントを経由してリクエストをルーティングできます：
+## ボイスモード
 
-**CLI パラメータ（最高優先度、コマンドごと）：**
-```bash
-fugu-vibe vibe --base-url https://your-proxy.com/v1
-fugu-vibe submit "タスク" -p "..." --base-url https://your-proxy.com/v1
-```
+ボイスモードは現在プレースホルダーです。コードにはレコーダー/STT の足場が含まれているが、プッシュトゥトークと連続ボイスインタラクションはまだプロダクション対応ではない。
 
-**環境変数：**
-```bash
-export FUGU_VIBE_API_BASE_URL="https://your-proxy.com/v1"
-export SAKANA_API_KEY="sk-your-key"
-fugu-vibe vibe
-```
-
-**設定ファイル（永続）：**
-```toml
-[api]
-base_url = "https://your-proxy.com/v1"
-```
-
-> ⚠️ **注意：** API キーまたは `.fugu-vibe.toml` をバージョン管理にコミットしないでください。プロジェクト `.gitignore` はこれらをデフォルトで除外しています。
-
-## 🧭 オーケストレーション可視化
-
-ダッシュボードは Fugu 内部のマルチエージェント協調を表示します：
-
-```
-┌──────────────────────────────────────────────┐
-│ 🐡 Fugu Ultra - オーケストレーションダッシュボード│
-├──────────────────┬───────────────────────────┤
-│ 🧭 ルーティング：  │ 出力パネル（リアルタイム   │
-│   gpt-5.5 (87%)  │ ストリーミングコンテンツ）│
-│                  │                           │
-│ ⚡ ワーカー-1    │                           │
-│   アクティブ     │                           │
-│   (45 tok/s)     │                           │
-│                  │                           │
-│ 🔍 検証          │                           │
-│   #1             │                           │
-├──────────────────┼───────────────────────────┤
-│ 📥 入力: 3.2k    │ 📋 タスク                  │
-│ 📤 出力: 12.8k   │ 🔄 認証のリファクタリング  │
-│ ⚙️  オーケスト: 8.4k│ ⏳ テストを書く [待機中]  │
-│ 📊 合計: 24.4k   │                           │
-└──────────────────┴───────────────────────────┘
-```
-
-Fugu の API は内部ルーティングを公開しないため、CLI は**マルチシグナル推論**を使用します：
-- 初期遅延 → ルーティング決定
-- Token バーストパターン → ワーカーアクティベーション
-- コンテンツマーカー → 並列ワーカー境界
-- Token コスト比率 → オーケストレーションオーバーヘッド
-
-## 🎤 ボイス入力
-
-ボイスモードの使用：
-- **VAD**（Voice Activity Detection）による自動セグメンテーション
-- **Faster-Whisper** によるローカル STT
-- 設定可能なキーによるプッシュトゥトーク（デフォルト：Space）
+以下のコマンドは存在する可能性があるが、安定しているとは扱わない：
 
 ```bash
-# ボイスサポートをインストール
-pip install fugu-vibe-cli[voice]
-
-# ボイスセッションを開始
 fugu-vibe vibe --voice
-
-# または専用ボイスモード
 fugu-vibe voice --continuous
 ```
 
-## 🏗️ アーキテクチャ
-
-```
-┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-│  CLI     │  │  コア    │  │  API     │  │ 外部サービス│
-│ (Click)  │  │  エンジン  │  │  レイヤー  │  │          │
-├──────────┤  ├──────────┤  ├──────────┤  ├──────────┤
-│ vibe     │  │ TaskMgr  │  │ FuguClient│  │ Sakana  │
-│ submit   │  │ OrchViz  │  │ Request   │  │  API    │
-│ status   │  │ EventBus │  │ Stream    │  │         │
-│ voice    │  │ GitWT    │  │ Parser    │  │         │
-└────┬─────┘  └────┬─────┘  └────┬─────┘  └─────────┘
-     │             │             │
-┌────┴─────┐  ┌────┴─────┐  ┌────┴─────┐
-│   TUI    │  │  ボイス   │  │   可視化  │
-│ (Rich)   │  │(Whisper) │  │(Timeline)│
-└──────────┘  └──────────┘  └──────────┘
-```
-
-## 📚 Fugu API の特性
-
-本 CLI は Fugu の独自の API 動作を処理します：
-
-| パラメータ | Fugu の動作 | CLI 処理 |
-|-----------|--------------|--------------|
-| `temperature` | 受け入れるが**無視** | 警告をログ |
-| `parallel_tool_calls` | 受け入れるが**無視** | 警告をログ |
-| `previous_response_id` | **受け入れない** | 完全な履歴を送信 |
-| `reasoning.effort` | `high` / `xhigh` / `max` | 完全対応 |
-| `tools` | ビルトイン `web_search` | `--web-search` で有効化 |
-| `max_output_tokens` | 最大 32768 | 設定可能 |
-| オーケストレーション Token | 第 3 の Token カテゴリー | 独立して追跡 |
-
-## 🔧 開発
+## 開発
 
 ```bash
-# クローン
-git clone https://github.com/fugu-vibe/fugu-vibe-cli.git
-cd fugu-vibe-cli
-
-# uv でインストール（推奨）
 uv venv .venv --python 3.12
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 
-# テストを実行
 pytest
-
-# リント
 ruff check .
 mypy fugu_vibe/
 ```
 
-### 既知の問題と修正
+## ライセンス
 
-| 問題 | 修正 |
-|-------|-----|
-| macOS で Python 3.14 `pyexpat` クラッシュ | Python 3.11–3.13 を使用 |
-| PyPI に `asyncio-subprocess-tee` なし | 依存から削除；`asyncio.subprocess` を使用 |
-| `api/__init__.py` インポートパスエラー | 修正済：`fugu_vibe.request_builder` → `fugu_vibe.api.request_builder` |
-
-## 📄 ライセンス
-
-MIT ライセンス — 詳細は [LICENSE](LICENSE) ファイルを参照。
-
----
-
-**Sakana AI とは無関係。** Fugu は Sakana AI の商標です。
+MIT ライセンス。

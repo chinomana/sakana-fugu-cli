@@ -155,8 +155,8 @@ def load_config(override_path: Path | None = None) -> Config:
     config_path = override_path or find_config_file()
     if config_path:
         file_config = Config.from_file(config_path)
-        # Merge (file overrides defaults)
-        config = config.model_copy(update=file_config.model_dump())
+        # Re-validate merged values so nested config remains typed models.
+        config = Config.model_validate(file_config.model_dump())
         logger.info("config_loaded_from_file", path=str(config_path))
 
     # Environment variables override (handled by pydantic-settings)
