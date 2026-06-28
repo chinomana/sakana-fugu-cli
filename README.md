@@ -17,23 +17,31 @@ A specialized CLI for **Sakana Fugu** vibe coding with async voice control, agen
 
 ## 🚀 Quick Start
 
+### Requirements
+
+- Python 3.11+ (recommended: 3.12; 3.14 has known `pyexpat` issues on macOS)
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip 24+
+
+### Install from source
+
 ```bash
-# Install
-pip install fugu-vibe-cli
-
-# With voice support
-pip install fugu-vibe-cli[voice]
-
-# Or install from source
+# Clone
 git clone https://github.com/fugu-vibe/fugu-vibe-cli.git
 cd fugu-vibe-cli
+
+# Install with uv (recommended)
+uv venv .venv --python 3.12
+source .venv/bin/activate
+uv pip install -e .
+
+# Or with pip
 pip install -e ".[all]"
 ```
 
 ### Authentication
 
 ```bash
-# Set API key (get from https://console.sakana.ai/api-keys)
+# Set API key (get from https://console.sakana.ai/api-keys or your proxy provider)
 export SAKANA_API_KEY="your-key-here"
 
 # Or use the auth command
@@ -48,6 +56,9 @@ fugu-vibe vibe
 
 # Use Fugu Ultra with max reasoning
 fugu-vibe vibe --model fugu-ultra --effort xhigh
+
+# With a custom / proxy base URL
+fugu-vibe vibe --base-url https://your-proxy.com/v1
 
 # With voice control
 fugu-vibe vibe --voice
@@ -66,6 +77,7 @@ fugu-vibe vibe [OPTIONS]
 Options:
   -m, --model TEXT       Model (fugu | fugu-ultra)
   -e, --effort CHOICE    Reasoning: high | xhigh | max
+  --base-url TEXT        Override API base URL (for proxy / unofficial endpoints)
   -w, --web-search       Enable web search tool
   --no-viz              Disable visualization
   -v, --voice           Enable voice input
@@ -178,6 +190,31 @@ auto_merge = true
 unlimited_mode = false
 ```
 
+### Using a Proxy / Unofficial Base URL
+
+You can route requests through a reverse proxy or unofficial endpoint:
+
+**Via CLI flag (highest priority, per-command):**
+```bash
+fugu-vibe vibe --base-url https://your-proxy.com/v1
+fugu-vibe submit "Task" -p "..." --base-url https://your-proxy.com/v1
+```
+
+**Via environment variable:**
+```bash
+export FUGU_VIBE_API_BASE_URL="https://your-proxy.com/v1"
+export SAKANA_API_KEY="sk-your-key"
+fugu-vibe vibe
+```
+
+**Via config file (persistent):**
+```toml
+[api]
+base_url = "https://your-proxy.com/v1"
+```
+
+> ⚠️ **Note:** Do not commit API keys or `.fugu-vibe.toml` to version control. The project `.gitignore` already excludes them.
+
 ## 🧭 Orchestration Visualization
 
 The dashboard shows Fugu's internal multi-agent coordination:
@@ -267,8 +304,10 @@ This CLI handles Fugu's unique API behaviors:
 git clone https://github.com/fugu-vibe/fugu-vibe-cli.git
 cd fugu-vibe-cli
 
-# Install dev dependencies
-pip install -e ".[all]"
+# Install with uv (recommended)
+uv venv .venv --python 3.12
+source .venv/bin/activate
+uv pip install -e ".[dev]"
 
 # Run tests
 pytest
@@ -277,6 +316,14 @@ pytest
 ruff check .
 mypy fugu_vibe/
 ```
+
+### Known Issues & Fixes
+
+| Issue | Fix |
+|-------|-----|
+| Python 3.14 `pyexpat` crash on macOS | Use Python 3.11–3.13 |
+| `asyncio-subprocess-tee` not on PyPI | Removed from deps; using `asyncio.subprocess` |
+| `api/__init__.py` import path error | Fixed: `fugu_vibe.request_builder` → `fugu_vibe.api.request_builder` |
 
 ## 📄 License
 

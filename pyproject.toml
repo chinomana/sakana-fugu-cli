@@ -40,7 +40,7 @@ dependencies = [
     "prompt-toolkit>=3.0.0",
     
     # Async & Concurrency
-    "asyncio-subprocess-tee>=0.2.0",
+    # asyncio-subprocess-tee not available on PyPI; using stdlib asyncio.subprocess
     "aiosqlite>=0.20.0",
     
     # Voice (optional)

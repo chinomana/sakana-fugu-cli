@@ -56,12 +56,13 @@ def print_banner() -> None:
 @click.group(invoke_without_command=True)
 @click.option("--config", "config_path", type=click.Path(), help="Path to config file")
 @click.option("--api-key", envvar="SAKANA_API_KEY", help="Sakana API key")
+@click.option("--base-url", envvar="FUGU_VIBE_API_BASE_URL", help="Override API base URL for proxy/unofficial endpoints")
 @click.option("--model", default=None, help="Default model (fugu | fugu-ultra)")
 @click.option("--effort", type=click.Choice(["high", "xhigh", "max"]), help="Reasoning effort")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 @click.version_option(version="0.1.0")
 @click.pass_context
-def cli(ctx: click.Context, config_path: str | None, api_key: str | None,
+def cli(ctx: click.Context, config_path: str | None, api_key: str | None, base_url: str | None,
         model: str | None, effort: str | None, verbose: bool) -> None:
     """
     🐡 Fugu Vibe CLI — Specialized vibe coding for Sakana Fugu.
@@ -86,6 +87,8 @@ def cli(ctx: click.Context, config_path: str | None, api_key: str | None,
     # Override with CLI options
     if api_key:
         config.api.api_key = api_key
+    if base_url:
+        config.api.base_url = base_url
     if model:
         config.model.default = model
     if effort:
