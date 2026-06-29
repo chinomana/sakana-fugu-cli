@@ -32,7 +32,7 @@ class AgentLoop:
     client: StreamingClient
     registry: ToolRegistry
     event_bus: EventBus
-    max_tool_rounds: int = 4
+    max_tool_rounds: int = 3
 
     async def run(
         self,
@@ -40,6 +40,8 @@ class AgentLoop:
         model: str,
         effort: str,
         web_search: bool = False,
+        instructions: str | None = None,
+        max_output_tokens: int | None = None,
         on_content: Callable[[str], None] | None = None,
         on_tool_call: Callable[[dict[str, Any]], None] | None = None,
     ) -> AgentLoopResult:
@@ -68,6 +70,8 @@ class AgentLoop:
                 effort=effort,
                 web_search=web_search,
                 tools=local_tools,
+                instructions=instructions,
+                max_output_tokens=max_output_tokens,
             ):
                 if chunk.type == "content":
                     content_parts.append(chunk.content)
@@ -111,7 +115,15 @@ class AgentLoop:
                     )
                 return result
             if round_index >= self.max_tool_rounds:
-                result.content += "\n[Stopped: maximum tool rounds reached]"
+                message = "\n[Stopped: maximum tool rounds reached. Answering with the information gathered so far.]"
+                result.content += message
+                if on_content:
+                    on_content(message)
+                await self.event_bus.emit(
+                    EventType.STREAM_CONTENT,
+                    {"content": message},
+                    source="agent_loop",
+                )
                 return result
 
             new_tool_calls = [
@@ -219,4 +231,8 @@ class AgentLoop:
         if "content" in tool_result:
             content = str(tool_result.get("content", ""))
             return f"read {len(content)} chars from {tool_result.get('path', 'file')}"
+        if "bytes" in tool_result:
+            return f"wrote {tool_result.get('bytes')} bytes to {tool_result.get('path', 'file')}"
+        if "path" in tool_result:
+            return f"created {tool_result.get('path')}"
         return "ok"

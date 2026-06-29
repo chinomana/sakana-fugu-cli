@@ -122,7 +122,7 @@ fugu-vibe vibe --unlimited
 
 工作区文件检查命令是只读的，并限制在所选工作区范围内。它们跳过运行时/缓存目录，如 `.git/`、`.fugu-vibe/`、`.venv/` 和 `node_modules/`。
 
-交互式会话可以执行 Fugu 函数调用，用于只读文件工具（`file_list`、`file_read`、`file_search`）。终端执行不会暴露给自动模型调用。
+交互式会话可以执行 Fugu 函数调用，用于工作区文件工具（`file_list`、`file_read`、`file_search`、`file_mkdir`、`file_write`）。终端执行不会暴露给自动模型调用。
 
 终端执行默认关闭。要在 `vibe` 中启用手动终端运行，请设置：
 

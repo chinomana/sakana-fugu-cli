@@ -123,7 +123,7 @@ Current context metadata is written to:
 
 Workspace file inspection commands are read-only and constrained to the selected workspace. They skip runtime/cache directories such as `.git/`, `.fugu-vibe/`, `.venv/`, and `node_modules/`.
 
-The interactive session can execute Fugu function calls for read-only file tools (`file_list`, `file_read`, `file_search`). Terminal execution is not exposed for automatic model calls.
+The interactive session can execute Fugu function calls for workspace file tools (`file_list`, `file_read`, `file_search`, `file_mkdir`, `file_write`). Terminal execution is not exposed for automatic model calls.
 
 Terminal execution is disabled by default. To enable manual terminal runs in `vibe`, set:
 

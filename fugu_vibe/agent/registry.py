@@ -64,6 +64,36 @@ class ToolRegistry:
                 },
                 "strict": True,
             },
+            {
+                "type": "function",
+                "name": "file_write",
+                "description": "Create or overwrite a UTF-8 text file in the current workspace. Use for implementation tasks.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                        "overwrite": {"type": "boolean", "default": True},
+                    },
+                    "required": ["path", "content"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+            {
+                "type": "function",
+                "name": "file_mkdir",
+                "description": "Create a directory in the current workspace. Use before writing grouped project files.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                    },
+                    "required": ["path"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
         ]
 
     async def dispatch(self, name: str, arguments: str | dict[str, Any]) -> dict[str, Any]:
@@ -90,6 +120,19 @@ class ToolRegistry:
                     limit=int(args.get("limit", 50)),
                 )
                 return {"ok": True, "matches": matches, "count": len(matches)}
+            if name == "file_write":
+                overwrite = args.get("overwrite", True)
+                if isinstance(overwrite, str):
+                    overwrite = overwrite.lower() in ("1", "true", "yes")
+                path = self.file_tools.write_file(
+                    Path(str(args["path"])),
+                    content=str(args["content"]),
+                    overwrite=bool(overwrite),
+                )
+                return {"ok": True, "path": path, "bytes": len(str(args["content"]).encode("utf-8"))}
+            if name == "file_mkdir":
+                path = self.file_tools.make_directory(Path(str(args["path"])))
+                return {"ok": True, "path": path}
         except (KeyError, ValueError, FileToolError) as e:
             return {"ok": False, "error": str(e)}
 

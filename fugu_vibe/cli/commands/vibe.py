@@ -37,6 +37,14 @@ if TYPE_CHECKING:
 
 console = Console()
 
+CODING_AGENT_INSTRUCTIONS = """You are operating inside fugu-vibe as a controlled coding agent.
+Use file tools to inspect and modify the workspace when needed. Available automatic tools: file_list, file_read, file_search, file_mkdir, and file_write.
+For implementation tasks, write the requested project files directly with file_mkdir and file_write. Keep writes inside the selected workspace.
+After writing files, summarize exactly what you created or changed and how to run it.
+If direct writes are not safe or fail, produce a git apply compatible unified diff as a fallback.
+Avoid repeatedly calling the same tool with the same arguments.
+"""
+
 
 @click.command()
 @click.option("--model", "-m", help="Model to use")
@@ -278,12 +286,16 @@ async def _send_to_fugu(
             model=config.model.default,
             effort=config.model.reasoning_effort,  # type: ignore
             web_search=web_search,
+            instructions=CODING_AGENT_INSTRUCTIONS,
+            max_output_tokens=min(config.model.max_output_tokens, 4096),
             on_content=on_content,
             on_tool_call=on_tool_call,
         )
         if result.tool_calls:
             context.record_tool_usage("agent.tools", {"count": len(result.tool_calls)}, len(result.tool_calls))
-                    
+        if result.content and not response_parts:
+            on_content(result.content)
+                     
     except Exception as e:
         console.print(f"\n[red]Error: {e}[/red]")
     finally:
