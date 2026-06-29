@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from fugu_vibe.agent.registry import ToolRegistry
-from fugu_vibe.api.stream_parser import StreamChunk
 from fugu_vibe.core.event_bus import EventBus, EventType
 
 

@@ -11,6 +11,8 @@ from pathlib import Path
 from re import Pattern
 from typing import Any
 
+from fugu_vibe.safety import SafetyMode, SafetyPolicy
+
 DEFAULT_EXCLUDES = {
     ".git",
     ".fugu-vibe",
@@ -43,9 +45,18 @@ class FileTools:
     """File operations constrained to one workspace."""
 
     workspace: Path
+    safety_mode: str | SafetyMode = SafetyMode.AUTO_EDIT
 
     def __post_init__(self) -> None:
         self.workspace = self.workspace.expanduser().resolve()
+        self.safety_policy = SafetyPolicy(self.safety_mode)
+
+    def require_write_allowed(self, path: str | Path | None = None, *, approved: bool = False) -> None:
+        """Raise if the current safety mode does not allow file mutation."""
+        relative_path = None if path is None else str(path)
+        decision = self.safety_policy.evaluate_file_write(relative_path, approved=approved)
+        if not decision.allowed:
+            raise FileToolError(decision.reason)
 
     def list_files(self, pattern: str = "**/*", limit: int = 200) -> list[str]:
         """List workspace files matching a glob pattern."""
@@ -203,6 +214,7 @@ class FileTools:
         content: str,
         overwrite: bool = True,
         max_bytes: int = MAX_WRITE_BYTES,
+        approved: bool = False,
     ) -> str:
         """Write a UTF-8 text file inside the workspace."""
         return str(
@@ -211,6 +223,7 @@ class FileTools:
                 content=content,
                 overwrite=overwrite,
                 max_bytes=max_bytes,
+                approved=approved,
             )["path"]
         )
 
@@ -220,8 +233,10 @@ class FileTools:
         content: str,
         overwrite: bool = True,
         max_bytes: int = MAX_WRITE_BYTES,
+        approved: bool = False,
     ) -> dict[str, Any]:
         """Write a UTF-8 text file inside the workspace and return metadata."""
+        self.require_write_allowed(path, approved=approved)
         if not isinstance(content, str):
             raise FileToolError("content must be a string")
         size = len(content.encode("utf-8"))
@@ -244,8 +259,10 @@ class FileTools:
         new_string: str,
         replace_all: bool = False,
         max_bytes: int = MAX_WRITE_BYTES,
+        approved: bool = False,
     ) -> dict[str, Any]:
         """Edit a file by replacing an exact string."""
+        self.require_write_allowed(path, approved=approved)
         if not old_string:
             raise FileToolError("old_string must not be empty")
         resolved = self._resolve_text_file(path, max_bytes=max_bytes)
@@ -272,8 +289,9 @@ class FileTools:
             "size_bytes_after": size,
         }
 
-    def delete_file(self, path: str | Path) -> dict[str, Any]:
+    def delete_file(self, path: str | Path, *, approved: bool = False) -> dict[str, Any]:
         """Delete a file inside the workspace."""
+        self.require_write_allowed(path, approved=approved)
         resolved = self._resolve(path)
         if not resolved.is_file():
             raise FileToolError(f"Not a file: {path}")
@@ -284,8 +302,9 @@ class FileTools:
         resolved.unlink()
         return {"path": relative, "deleted": True, "size_bytes": size}
 
-    def make_directory(self, path: str | Path) -> str:
+    def make_directory(self, path: str | Path, *, approved: bool = False) -> str:
         """Create a directory inside the workspace."""
+        self.require_write_allowed(path, approved=approved)
         resolved = self._resolve(path)
         if self._is_excluded(resolved):
             raise FileToolError(f"Path is excluded: {path}")

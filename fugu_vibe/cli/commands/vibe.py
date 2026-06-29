@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 from prompt_toolkit import PromptSession
@@ -23,6 +23,7 @@ from fugu_vibe.agent import AgentLoop, ToolRegistry
 from fugu_vibe.api.client import FuguClient
 from fugu_vibe.context import ContextManager
 from fugu_vibe.core.attachments import build_content_parts
+from fugu_vibe.core.checkpoints import CheckpointError, CheckpointManager
 from fugu_vibe.core.event_bus import EventBus
 from fugu_vibe.core.event_log import EventLogWriter
 from fugu_vibe.core.orchestration import OrchestrationAnalyzer
@@ -172,19 +173,30 @@ async def _vibe_session(
     )
     context = ContextManager(workspace, session_id=resume_session)
     output_writer = SessionOutputWriter(workspace)
-    file_tools = FileTools(Path.cwd())
+    file_tools = FileTools(Path.cwd(), safety_mode=config.safety.mode)
+    checkpoint_manager = CheckpointManager(Path.cwd())
     patch_tool = PatchTool(Path.cwd())
     terminal_tool = TerminalTool(
         Path.cwd(),
         enabled=config.tools.terminal_enabled,
         approval=config.tools.terminal_approval,
+        safety_mode=config.safety.mode,
         timeout_seconds=config.tools.terminal_timeout_seconds,
         max_output_chars=config.tools.max_output_chars,
     )
+
+    async def approve_tool_operation(name: str, args: dict[str, Any], preview: str) -> bool:
+        console.print(f"\n[yellow]Approval required for {name}:[/yellow] {args.get('path', '')}")
+        if preview:
+            console.print(Syntax(preview, "diff", word_wrap=True))
+        answer = await session.prompt_async("Approve this change? Type 'yes' to continue: ")
+        return answer.strip().lower() == "yes"
+
     tool_registry = ToolRegistry(
         file_tools,
         terminal_tool=terminal_tool,
         git_tools=GitTools(Path.cwd(), max_output_chars=config.tools.max_output_chars),
+        approval_callback=approve_tool_operation,
     )
     for path in initial_files:
         context.add_attachment(path)
@@ -228,6 +240,7 @@ async def _vibe_session(
                         dashboard,
                         context,
                         file_tools,
+                        checkpoint_manager,
                         patch_tool,
                         config.patch.mode,
                         terminal_tool,
@@ -245,6 +258,7 @@ async def _vibe_session(
                     context,
                     output_writer,
                     tool_registry,
+                    checkpoint_manager,
                 )
 
             except KeyboardInterrupt:
@@ -274,6 +288,7 @@ async def _send_to_fugu(
     context: ContextManager,
     output_writer: SessionOutputWriter,
     tool_registry: ToolRegistry,
+    checkpoint_manager: CheckpointManager,
 ) -> None:
     """Send a prompt to Fugu and stream the response."""
 
@@ -317,6 +332,7 @@ async def _send_to_fugu(
         )
         if result.tool_calls:
             context.record_tool_usage("agent.tools", {"count": len(result.tool_calls)}, len(result.tool_calls))
+            _maybe_create_turn_checkpoint(config, checkpoint_manager, result.tool_calls)
         if result.content and not response_parts:
             on_content(result.content)
         tool_calls = result.tool_calls
@@ -346,6 +362,25 @@ async def _send_to_fugu(
         console.print("\n")
 
 
+def _maybe_create_turn_checkpoint(
+    config: Config,
+    checkpoint_manager: CheckpointManager,
+    tool_calls: list[dict[str, object]],
+) -> None:
+    if not config.safety.checkpoint_enabled or not config.safety.checkpoint_each_turn:
+        return
+    mutating_tools = {"file_write", "file_edit", "file_delete", "file_mkdir", "bash", "run_test", "run_lint"}
+    used_tools = {str(call.get("name", "")).replace(".", "_") for call in tool_calls}
+    if not mutating_tools.intersection(used_tools):
+        return
+    try:
+        checkpoint = checkpoint_manager.create("auto-turn")
+    except CheckpointError as e:
+        console.print(f"[yellow]Checkpoint skipped:[/yellow] {e}")
+        return
+    console.print(f"[dim]Checkpoint saved: {checkpoint.id}[/dim]")
+
+
 async def _handle_command(
     cmd: str,
     task_manager: TaskManager,
@@ -353,6 +388,7 @@ async def _handle_command(
     dashboard: OrchestrationDashboard | None,
     context: ContextManager,
     file_tools: FileTools,
+    checkpoint_manager: CheckpointManager,
     patch_tool: PatchTool,
     patch_mode: str,
     terminal_tool: TerminalTool,
@@ -444,6 +480,17 @@ async def _handle_command(
     elif command == "/tools":
         _print_tools_status(terminal_tool)
 
+    elif command == "/checkpoint":
+        message = cmd[len("/checkpoint") :].strip() or "manual checkpoint"
+        _create_checkpoint(checkpoint_manager, message)
+
+    elif command == "/checkpoints":
+        _print_checkpoints(checkpoint_manager)
+
+    elif command == "/undo":
+        args = _command_args(cmd)
+        _undo_checkpoint(checkpoint_manager, args[0] if args else None)
+
     elif command == "/diff":
         count = _print_git_diff(patch_tool)
         context.record_tool_usage("git.diff", {}, count)
@@ -476,6 +523,9 @@ async def _handle_command(
         console.print("  /diff         - Show current git diff")
         console.print("  /apply FILE   - Check and apply a unified diff")
         console.print("  /tools        - Show local tool policy")
+        console.print("  /checkpoint [MSG] - Save current git diff for rollback")
+        console.print("  /checkpoints  - List saved checkpoints")
+        console.print("  /undo [ID]    - Reverse the latest or selected checkpoint")
         console.print("  /terminal CMD - Run a terminal command if enabled")
         console.print("  /attach PATH  - Attach a PDF, image, or file")
         console.print("  /files        - List attached files")
@@ -630,7 +680,7 @@ def _print_tools_status(terminal_tool: TerminalTool) -> None:
     table.add_row(
         "terminal.run",
         "yes" if status["terminal_enabled"] else "no",
-        str(status["terminal_approval"]),
+        str(status.get("safety_mode", status["terminal_approval"])),
     )
     console.print(table)
     console.print(f"[dim]Timeout: {status['timeout_seconds']}s, max output: {status['max_output_chars']} chars[/dim]")
@@ -652,6 +702,52 @@ async def _run_terminal_command(terminal_tool: TerminalTool, command: str) -> in
         console.print("[bold]stderr[/bold]")
         console.print(result.stderr)
     console.print(f"[dim]Log: {result.log_path}[/dim]")
+    return 1
+
+
+def _create_checkpoint(checkpoint_manager: CheckpointManager, message: str) -> int:
+    try:
+        checkpoint = checkpoint_manager.create(message)
+    except CheckpointError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        return 0
+    console.print(f"[green]Checkpoint saved:[/green] {checkpoint.id}")
+    if checkpoint.changed_files:
+        console.print("[dim]Files: " + ", ".join(checkpoint.changed_files) + "[/dim]")
+    return 1
+
+
+def _print_checkpoints(checkpoint_manager: CheckpointManager) -> int:
+    checkpoints = checkpoint_manager.list()
+    if not checkpoints:
+        console.print("[dim]No checkpoints saved.[/dim]")
+        return 0
+    table = Table(show_header=True)
+    table.add_column("ID")
+    table.add_column("Message")
+    table.add_column("Files")
+    table.add_column("Created")
+    for checkpoint in checkpoints:
+        table.add_row(
+            str(checkpoint.get("id", "")),
+            str(checkpoint.get("message", "")),
+            str(len(checkpoint.get("changed_files", []))),
+            str(checkpoint.get("created_at", "")),
+        )
+    console.print(table)
+    return len(checkpoints)
+
+
+def _undo_checkpoint(checkpoint_manager: CheckpointManager, checkpoint_id: str | None = None) -> int:
+    try:
+        result = checkpoint_manager.undo(checkpoint_id)
+    except CheckpointError as e:
+        console.print(f"[red]{e}[/red]")
+        return 0
+    console.print(f"[green]Undid checkpoint:[/green] {result['undone']}")
+    changed_files = result.get("changed_files") or []
+    if changed_files:
+        console.print("[dim]Restored files: " + ", ".join(map(str, changed_files)) + "[/dim]")
     return 1
 
 

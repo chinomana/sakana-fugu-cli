@@ -118,6 +118,16 @@ class ToolConfig(BaseSettings):
     max_output_chars: int = 20_000
 
 
+class SafetyConfig(BaseSettings):
+    """Safety governance and rollback settings."""
+
+    model_config = SettingsConfigDict(env_prefix="FUGU_VIBE_SAFETY_")
+
+    mode: Literal["ask", "auto-safe", "auto-edit", "auto"] = "auto-safe"
+    checkpoint_enabled: bool = True
+    checkpoint_each_turn: bool = False
+
+
 class PatchConfig(BaseSettings):
     """Patch application policy."""
 
@@ -141,6 +151,7 @@ class Config(BaseSettings):
     tasks: TaskConfig = Field(default_factory=TaskConfig)
     prompt: PromptConfig = Field(default_factory=PromptConfig)
     tools: ToolConfig = Field(default_factory=ToolConfig)
+    safety: SafetyConfig = Field(default_factory=SafetyConfig)
     patch: PatchConfig = Field(default_factory=PatchConfig)
 
     @classmethod

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +19,8 @@ from fugu_vibe.tools import (
     TerminalToolError,
 )
 
+ApprovalCallback = Callable[[str, dict[str, Any], str], Awaitable[bool]]
+
 
 @dataclass
 class ToolRegistry:
@@ -25,6 +29,7 @@ class ToolRegistry:
     file_tools: FileTools
     terminal_tool: TerminalTool | None = None
     git_tools: GitTools | None = None
+    approval_callback: ApprovalCallback | None = None
 
     def schemas(self) -> list[dict[str, Any]]:
         schemas = [
@@ -165,6 +170,25 @@ class ToolRegistry:
             )
         return schemas
 
+    async def approve_file_operation(self, name: str, args: dict[str, Any]) -> bool:
+        preview = self._file_operation_preview(name, args)
+        if self.file_tools.safety_policy.evaluate_file_write(str(args.get("path", ""))).allowed:
+            return True
+        if self.approval_callback is None:
+            return False
+        return await self.approval_callback(name, args, preview)
+
+    async def approve_terminal_operation(self, name: str, args: dict[str, Any]) -> bool:
+        command = str(args.get("command", ""))
+        if self.terminal_tool is None:
+            return False
+        if self.terminal_tool.safety_policy.evaluate_command(command).allowed:
+            return True
+        if self.approval_callback is None:
+            return False
+        preview = f"$ {command}\n"
+        return await self.approval_callback(name, args, preview)
+
     async def dispatch(self, name: str, arguments: str | dict[str, Any]) -> dict[str, Any]:
         name = name.replace(".", "_")
         args = self._parse_arguments(arguments)
@@ -207,15 +231,18 @@ class ToolRegistry:
                     ),
                 }
             if name == "file_write":
+                approved = await self.approve_file_operation(name, args)
                 return {
                     "ok": True,
                     **self.file_tools.write_file_structured(
                         Path(str(args["path"])),
                         content=str(args["content"]),
                         overwrite=self._bool_arg(args.get("overwrite", True)),
+                        approved=approved,
                     ),
                 }
             if name == "file_edit":
+                approved = await self.approve_file_operation(name, args)
                 return {
                     "ok": True,
                     **self.file_tools.edit_file(
@@ -223,25 +250,39 @@ class ToolRegistry:
                         old_string=str(args["old_string"]),
                         new_string=str(args["new_string"]),
                         replace_all=self._bool_arg(args.get("replace_all", False)),
+                        approved=approved,
                     ),
                 }
             if name == "file_delete":
-                return {"ok": True, **self.file_tools.delete_file(Path(str(args["path"])))}
+                approved = await self.approve_file_operation(name, args)
+                return {"ok": True, **self.file_tools.delete_file(Path(str(args["path"])), approved=approved)}
             if name == "file_mkdir":
-                path = self.file_tools.make_directory(Path(str(args["path"])))
+                approved = await self.approve_file_operation(name, args)
+                path = self.file_tools.make_directory(Path(str(args["path"])), approved=approved)
                 return {"ok": True, "path": path}
             if name == "bash":
-                result = await self._run_terminal(str(args["command"]), str(args.get("cwd", ".")))
+                approved = await self.approve_terminal_operation(name, args)
+                result = await self._run_terminal(str(args["command"]), str(args.get("cwd", ".")), approved=approved)
                 return {"ok": result["exit_code"] == 0 and not result["timed_out"], **result}
             if name == "run_test":
-                result = await self._run_terminal(str(args.get("command", "pytest")), str(args.get("cwd", ".")))
+                approved = await self.approve_terminal_operation(name, args)
+                result = await self._run_terminal(
+                    str(args.get("command", "pytest")),
+                    str(args.get("cwd", ".")),
+                    approved=approved,
+                )
                 return {
                     "ok": result["exit_code"] == 0 and not result["timed_out"],
                     **result,
                     "summary": self._summarize_tests(result),
                 }
             if name == "run_lint":
-                result = await self._run_terminal(str(args.get("command", "ruff check .")), str(args.get("cwd", ".")))
+                approved = await self.approve_terminal_operation(name, args)
+                result = await self._run_terminal(
+                    str(args.get("command", "ruff check .")),
+                    str(args.get("cwd", ".")),
+                    approved=approved,
+                )
                 return {"ok": result["exit_code"] == 0 and not result["timed_out"], **result}
             if name == "git_status":
                 return {"ok": True, **self._git().status()}
@@ -279,6 +320,74 @@ class ToolRegistry:
             schema["parameters"]["required"] = required
         return schema
 
+    def _file_operation_preview(self, name: str, args: dict[str, Any]) -> str:
+        path = str(args.get("path", ""))
+        if name == "file_write":
+            return self._write_preview(path, str(args.get("content", "")))
+        if name == "file_edit":
+            return self._edit_preview(
+                path,
+                str(args.get("old_string", "")),
+                str(args.get("new_string", "")),
+                self._bool_arg(args.get("replace_all", False)),
+            )
+        if name == "file_delete":
+            return self._delete_preview(path)
+        if name == "file_mkdir":
+            return f"Create directory: {path}\n"
+        return f"{name} {path}\n"
+
+    def _write_preview(self, path: str, content: str) -> str:
+        resolved = self._resolve_preview_path(path)
+        old_lines = resolved.read_text(encoding="utf-8").splitlines(keepends=True) if resolved.exists() else []
+        new_lines = content.splitlines(keepends=True)
+        if content and not content.endswith("\n"):
+            new_lines[-1] = f"{new_lines[-1]}\n"
+        return "".join(
+            difflib.unified_diff(
+                old_lines,
+                new_lines,
+                fromfile=f"a/{path}" if old_lines else "/dev/null",
+                tofile=f"b/{path}",
+            )
+        )
+
+    def _edit_preview(self, path: str, old_string: str, new_string: str, replace_all: bool) -> str:
+        resolved = self._resolve_preview_path(path)
+        old_content = resolved.read_text(encoding="utf-8") if resolved.exists() else ""
+        count = old_content.count(old_string) if old_string else 0
+        replacements = count if replace_all else min(count, 1)
+        new_content = old_content.replace(old_string, new_string, replacements) if replacements else old_content
+        return "".join(
+            difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                new_content.splitlines(keepends=True),
+                fromfile=f"a/{path}",
+                tofile=f"b/{path}",
+            )
+        )
+
+    def _delete_preview(self, path: str) -> str:
+        resolved = self._resolve_preview_path(path)
+        old_content = resolved.read_text(encoding="utf-8") if resolved.exists() else ""
+        return "".join(
+            difflib.unified_diff(
+                old_content.splitlines(keepends=True),
+                [],
+                fromfile=f"a/{path}",
+                tofile="/dev/null",
+            )
+        )
+
+    def _resolve_preview_path(self, path: str) -> Path:
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = self.file_tools.workspace / candidate
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(self.file_tools.workspace):
+            raise FileToolError(f"Path escapes workspace: {path}")
+        return resolved
+
     def _parse_arguments(self, arguments: str | dict[str, Any]) -> dict[str, Any]:
         if isinstance(arguments, dict):
             return arguments
@@ -295,10 +404,10 @@ class ToolRegistry:
             return value.lower() in {"1", "true", "yes", "on"}
         return bool(value)
 
-    async def _run_terminal(self, command: str, cwd: str = ".") -> dict[str, Any]:
+    async def _run_terminal(self, command: str, cwd: str = ".", *, approved: bool = False) -> dict[str, Any]:
         if self.terminal_tool is None:
             raise TerminalToolError("Terminal tool is not configured")
-        return await self.terminal_tool.run_structured(command, cwd=cwd)
+        return await self.terminal_tool.run_structured(command, cwd=cwd, approved=approved)
 
     def _git(self) -> GitTools:
         if self.git_tools is None:
