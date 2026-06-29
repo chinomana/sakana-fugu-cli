@@ -6,7 +6,7 @@ from fugu_vibe.core.task_manager import Task, TaskManager, TaskStatus
 
 __all__ = [
     "EventBus",
-    "EventType", 
+    "EventType",
     "OrchestrationAnalyzer",
     "OrchestrationEvent",
     "Task",

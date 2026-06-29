@@ -11,16 +11,10 @@ from typing import Any, Literal
 
 import httpx
 import structlog
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
-from fugu_vibe.config import Config
 from fugu_vibe.api.request_builder import FuguRequestBuilder
 from fugu_vibe.api.stream_parser import StreamChunk, StreamParser
+from fugu_vibe.config import Config
 
 logger = structlog.get_logger()
 
@@ -60,7 +54,7 @@ class FuguResponse:
 class FuguClient:
     """
     Async client for Sakana Fugu API with stream resilience.
-    
+
     Handles:
     - Responses API (recommended) and Chat Completions API
     - 2-hour stream idle timeout (Sakana requirement)
@@ -72,7 +66,7 @@ class FuguClient:
     # Sakana Fugu endpoints
     RESPONSES_ENDPOINT = "/responses"
     CHAT_ENDPOINT = "/chat/completions"
-    
+
     # Fugu-specific model slugs
     MODELS = {
         "fugu": "fugu",
@@ -83,7 +77,7 @@ class FuguClient:
         self.config = config or Config()
         self.api_config = self.config.api
         self.model_config = self.config.model
-        
+
         # HTTP client with Sakana-recommended resilience
         timeout = httpx.Timeout(
             connect=30.0,
@@ -103,7 +97,7 @@ class FuguClient:
         self.parser = StreamParser()
         self._request_builder = FuguRequestBuilder(config)
         self._stream_retry_count = 0
-        
+
         logger.info(
             "fugu_client_initialized",
             base_url=self.api_config.base_url,
@@ -136,13 +130,13 @@ class FuguClient:
     ) -> AsyncIterator[StreamChunk]:
         """
         Send a request to Fugu API with full streaming support.
-        
+
         Yields StreamChunk objects for real-time processing.
         Handles automatic reconnection on stream drops.
         """
         model = model or self.model_config.default
         effort = effort or self.model_config.reasoning_effort
-        
+
         # Build request body with Fugu-specific parameters
         request_body = self._request_builder.build(
             messages=messages,
@@ -159,7 +153,7 @@ class FuguClient:
         )
 
         endpoint = self.RESPONSES_ENDPOINT  # Preferred API
-        
+
         logger.info(
             "fugu_request",
             model=model,
@@ -169,13 +163,13 @@ class FuguClient:
         )
 
         start_time = time.monotonic()
-        
+
         try:
             async for chunk in self._stream_with_resilience(endpoint, request_body):
                 # Enrich chunk with timing for orchestration inference
                 chunk.elapsed_time = time.monotonic() - start_time
                 yield chunk
-                
+
         except Exception as e:
             logger.error("fugu_request_failed", error=str(e), elapsed=time.monotonic() - start_time)
             raise
@@ -193,7 +187,7 @@ class FuguClient:
         """
         max_stream_retries = self.api_config.stream_max_retries
         max_request_retries = self.api_config.request_max_retries
-        
+
         for attempt in range(max_request_retries):
             try:
                 async with self.client.stream(
@@ -202,24 +196,24 @@ class FuguClient:
                     json=request_body,
                 ) as response:
                     response.raise_for_status()
-                    
+
                     async for line in response.aiter_lines():
                         if not line.strip():
                             continue
-                            
+
                         if line.startswith("data: "):
                             data = line[6:]
                             if data == "[DONE]":
                                 return
-                                
+
                             chunk = self.parser.parse_sse_chunk(data)
                             if chunk:
                                 yield chunk
-                                
+
                         # Heartbeat: reset stream retry on activity
                         self._stream_retry_count = 0
-                        
-            except httpx.RemoteProtocolError as e:
+
+            except httpx.RemoteProtocolError:
                 # Stream dropped - attempt reconnection
                 self._stream_retry_count += 1
                 if self._stream_retry_count <= max_stream_retries:
@@ -232,7 +226,7 @@ class FuguClient:
                     await asyncio.sleep(wait_time)
                     continue
                 raise
-                
+
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in (429, 502, 503, 504) and attempt < max_request_retries - 1:
                     wait_time = 2 ** attempt
@@ -245,7 +239,7 @@ class FuguClient:
                     await asyncio.sleep(wait_time)
                     continue
                 raise
-                
+
             # Successful completion
             return
 
@@ -260,7 +254,7 @@ class FuguClient:
         """
         response = FuguResponse()
         content_parts: list[str] = []
-        
+
         async for chunk in self.send(messages, **kwargs):
             if chunk.type == "content":
                 content_parts.append(chunk.content)
@@ -275,7 +269,7 @@ class FuguClient:
                 response.finish_reason = chunk.finish_reason
                 response.model = chunk.model or response.model
                 response.response_id = chunk.response_id
-                
+
         return response
 
     async def get_models(self) -> list[dict[str, Any]]:

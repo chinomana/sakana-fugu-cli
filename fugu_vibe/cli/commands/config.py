@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import click
@@ -29,12 +28,12 @@ def config_show(ctx: click.Context, as_json: bool) -> None:
     """Show current configuration."""
     config = ctx.obj.get("config") if ctx.obj else None
     config = config or load_config()
-    
+
     if as_json:
         import json
         console.print(json.dumps(config.model_dump(), indent=2))
         return
-    
+
     toml_content = _generate_config_toml(config)
     syntax = Syntax(toml_content, "toml", theme="monokai", line_numbers=True)
     console.print(syntax)
@@ -45,17 +44,17 @@ def config_show(ctx: click.Context, as_json: bool) -> None:
 def config_init(global_config: bool) -> None:
     """Initialize configuration file."""
     config = Config()
-    
+
     if global_config:
         path = Path.home() / ".config" / "fugu-vibe" / "config.toml"
     else:
         path = Path.cwd() / ".fugu-vibe.toml"
-    
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     toml_content = _generate_config_toml(config)
     path.write_text(toml_content)
-    
+
     console.print(f"[green]✅ Config created at {path}[/green]")
 
 
@@ -65,17 +64,17 @@ def config_init(global_config: bool) -> None:
 def config_set(key: str, value: str) -> None:
     """Set a configuration value."""
     config = load_config()
-    
+
     # Navigate nested keys (e.g., "model.default")
     parts = key.split(".")
     target = config
     for part in parts[:-1]:
         target = getattr(target, part)
-    
+
     # Set value with type conversion
     attr_name = parts[-1]
     current = getattr(target, attr_name)
-    
+
     if isinstance(current, bool):
         new_value = value.lower() in ("true", "1", "yes")
     elif isinstance(current, int):
@@ -84,14 +83,14 @@ def config_set(key: str, value: str) -> None:
         new_value = float(value)
     else:
         new_value = value
-    
+
     setattr(target, attr_name, new_value)
-    
+
     # Save
     path = Path.cwd() / ".fugu-vibe.toml"
     if not path.exists():
         path = Path.home() / ".config" / "fugu-vibe" / "config.toml"
-    
+
     config.to_file(path)
     console.print(f"[green]✅ Set {key} = {new_value}[/green]")
 
@@ -103,7 +102,7 @@ def config_path() -> None:
         ("Project", Path.cwd() / ".fugu-vibe.toml"),
         ("User", Path.home() / ".config" / "fugu-vibe" / "config.toml"),
     ]
-    
+
     console.print("\n[bold]Configuration files:[/bold]")
     for name, path in paths:
         exists = "✅" if path.exists() else "❌"

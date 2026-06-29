@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-
 DIFF_FENCE_RE = re.compile(r"```(?:diff|patch)\s*\n(.*?)\n```", re.DOTALL | re.IGNORECASE)
 
 

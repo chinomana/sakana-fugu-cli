@@ -6,7 +6,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-
 MAX_PATCH_BYTES = 1024 * 1024
 
 
@@ -37,8 +36,7 @@ class PatchTool:
             ["git", "diff", "--"],
             cwd=self.workspace,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
         )
         if result.returncode != 0:
@@ -97,8 +95,7 @@ class PatchTool:
             cwd=self.workspace,
             input=patch_text,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             timeout=30,
         )
         if result.returncode != 0:

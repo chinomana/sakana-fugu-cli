@@ -65,7 +65,8 @@ async def _follow_event_log(event_bus: EventBus, path: Path, poll_interval: floa
 
     while True:
         try:
-            if not path.exists():
+            exists = await asyncio.to_thread(path.exists)
+            if not exists:
                 await asyncio.sleep(poll_interval)
                 continue
 

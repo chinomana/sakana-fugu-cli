@@ -8,7 +8,6 @@ from typing import Any
 
 from fugu_vibe.core.event_bus import Event, EventBus, EventType
 
-
 DEFAULT_EVENT_LOG = Path(".fugu-vibe") / "events.jsonl"
 
 

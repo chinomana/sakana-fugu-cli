@@ -23,7 +23,7 @@ console = Console()
 def cancel_command(ctx: click.Context, task_id: str, cancel_all: bool) -> None:
     """
     🛑 Cancel a running or pending task.
-    
+
     Examples:
         fugu-vibe cancel <task-id>
         fugu-vibe cancel --all
@@ -37,15 +37,14 @@ async def _cancel(config, task_id: str, cancel_all: bool) -> None:
     client = FuguClient(config)
     task_manager = TaskManager(config, client, event_bus)
     await task_manager.start()
-    
+
     try:
         if cancel_all:
             status = await task_manager.status()
             cancelled = 0
             for task in status.get("tasks", []):
-                if task.get("status") in ("pending", "queued", "running"):
-                    if await task_manager.cancel(task["task_id"]):
-                        cancelled += 1
+                if task.get("status") in ("pending", "queued", "running") and await task_manager.cancel(task["task_id"]):
+                    cancelled += 1
             console.print(f"[yellow]Cancelled {cancelled} tasks[/yellow]")
         else:
             if await task_manager.cancel(task_id):

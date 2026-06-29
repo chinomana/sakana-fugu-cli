@@ -1,6 +1,5 @@
 """Tests for OrchestrationAnalyzer."""
 
-import asyncio
 import time
 
 import pytest
@@ -26,9 +25,9 @@ class TestOrchestrationAnalyzer:
             content="Hello",
             elapsed_time=10.0,  # > 5s threshold
         )
-        
+
         event = await analyzer.analyze_chunk(chunk)
-        
+
         assert event is not None
         assert event.phase == OrchestrationPhase.ROUTING
         assert analyzer._routing_detected is True
@@ -41,9 +40,9 @@ class TestOrchestrationAnalyzer:
             content="Hello",
             elapsed_time=1.0,  # < 5s threshold
         )
-        
+
         event = await analyzer.analyze_chunk(chunk)
-        
+
         assert event is None
         assert analyzer._routing_detected is False
 
@@ -51,14 +50,14 @@ class TestOrchestrationAnalyzer:
     async def test_verification_detection(self, analyzer):
         """Test verification keyword detection."""
         analyzer._first_token_time = time.monotonic()
-        
+
         chunk = StreamChunk(
             type="content",
             content="Let me verify this result",
         )
-        
+
         event = await analyzer.analyze_chunk(chunk)
-        
+
         assert event is not None
         assert event.phase == OrchestrationPhase.VERIFYING
 
@@ -73,9 +72,9 @@ class TestOrchestrationAnalyzer:
                 orchestration_tokens=50,
             ),
         )
-        
+
         await analyzer.analyze_chunk(chunk)
-        
+
         assert analyzer.state.token_usage.input_tokens == 100
         assert analyzer.state.token_usage.output_tokens == 200
         assert analyzer.state.token_usage.orchestration_tokens == 50
@@ -84,6 +83,6 @@ class TestOrchestrationAnalyzer:
     async def test_finalize(self, analyzer):
         """Test orchestration finalization."""
         event = await analyzer.finalize()
-        
+
         assert event.phase == OrchestrationPhase.DONE
         assert "complete" in event.message.lower()

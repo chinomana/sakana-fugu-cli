@@ -10,7 +10,7 @@ import structlog
 def setup_logging(verbose: bool = False) -> None:
     """Configure structured logging with Rich console output."""
     level = 10 if verbose else 30  # DEBUG or WARNING
-    
+
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,

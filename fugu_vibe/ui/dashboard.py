@@ -6,6 +6,7 @@ of Fugu's internal multi-agent coordination.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 import structlog
@@ -13,8 +14,6 @@ from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TextColumn
-from rich.table import Table
 from rich.text import Text
 
 from fugu_vibe.core.event_bus import Event, EventBus, EventType
@@ -30,7 +29,7 @@ logger = structlog.get_logger()
 class OrchestrationDashboard:
     """
     Real-time dashboard showing Fugu's internal orchestration.
-    
+
     Layout:
     ┌──────────────────────────────────────────────┐
     │ 🐡 Fugu Ultra - Orchestration Dashboard      │
@@ -52,12 +51,12 @@ class OrchestrationDashboard:
         self.config = config
         self.event_bus = event_bus
         self.console = Console()
-        
+
         # Components
         self.timeline = OrchestrationTimeline()
         self.token_meter = TokenMeter()
         self.task_tree = TaskTree()
-        
+
         # State
         self._orch_state = OrchestrationState()
         self._stream_content: list[str] = []
@@ -65,45 +64,45 @@ class OrchestrationDashboard:
         self._running = False
         self._live: Live | None = None
         self._update_task: asyncio.Task | None = None
-        
+
         # Layout configuration
         self.layout = self._create_layout()
 
     def _create_layout(self) -> Layout:
         """Create the dashboard layout."""
         layout = Layout(name="root")
-        
+
         # Header
         layout.split_column(
             Layout(name="header", size=3),
             Layout(name="main"),
             Layout(name="footer", size=1),
         )
-        
+
         # Main area: left (orchestration) + right (content)
         layout["main"].split_row(
             Layout(name="left", ratio=1),
             Layout(name="right", ratio=2),
         )
-        
+
         # Left: timeline + tokens
         layout["left"].split_column(
             Layout(name="timeline", ratio=2),
             Layout(name="tokens", ratio=1),
         )
-        
+
         # Right: content + tasks
         layout["right"].split_column(
             Layout(name="content", ratio=3),
             Layout(name="tasks", ratio=1),
         )
-        
+
         return layout
 
     async def start(self) -> None:
         """Start the dashboard display."""
         self._running = True
-        
+
         # Subscribe to events
         self.event_bus.on(EventType.ORCH_ROUTING, self._on_routing)
         self.event_bus.on(EventType.ORCH_WORKER, self._on_worker)
@@ -118,7 +117,7 @@ class OrchestrationDashboard:
         self.event_bus.on(EventType.TASK_CREATED, self._on_task_update)
         self.event_bus.on(EventType.TASK_STARTED, self._on_task_update)
         self.event_bus.on(EventType.TASK_COMPLETED, self._on_task_update)
-        
+
         self._render_layout()
 
         # Start live display
@@ -129,26 +128,24 @@ class OrchestrationDashboard:
             screen=False,
         )
         self._live.start()
-        
+
         # Start update loop
         self._update_task = asyncio.create_task(self._update_loop())
-        
+
         logger.info("dashboard_started")
 
     async def stop(self) -> None:
         """Stop the dashboard display."""
         self._running = False
-        
+
         if self._update_task:
             self._update_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._update_task
-            except asyncio.CancelledError:
-                pass
-        
+
         if self._live:
             self._live.stop()
-        
+
         logger.info("dashboard_stopped")
 
     async def _update_loop(self) -> None:
@@ -166,27 +163,27 @@ class OrchestrationDashboard:
         """Render all dashboard panels."""
         # Header
         self.layout["header"].update(self._render_header())
-        
+
         # Timeline
         self.layout["timeline"].update(
             Panel(self.timeline.render(), title="📊 Orchestration Timeline", border_style="cyan")
         )
-        
+
         # Token meter
         self.layout["tokens"].update(
             Panel(self.token_meter.render(), title="💰 Token Usage", border_style="green")
         )
-        
+
         # Content
         self.layout["content"].update(
             Panel(self._render_content(), title="📝 Output", border_style="blue")
         )
-        
+
         # Tasks
         self.layout["tasks"].update(
             Panel(self.task_tree.render(), title="📋 Tasks", border_style="yellow")
         )
-        
+
         # Footer
         self.layout["footer"].update(self._render_footer())
 
@@ -201,7 +198,7 @@ class OrchestrationDashboard:
             OrchestrationPhase.DONE: "✅",
             OrchestrationPhase.ERROR: "❌",
         }.get(self._orch_state.phase, "❓")
-        
+
         header_text = Text()
         header_text.append("🐡 ", style="bold cyan")
         header_text.append("Fugu Vibe CLI", style="bold white")
@@ -211,7 +208,7 @@ class OrchestrationDashboard:
         header_text.append(f"Workers: {self._orch_state.active_workers}", style="cyan")
         header_text.append("  |  ", style="dim")
         header_text.append(f"Elapsed: {self._orch_state.elapsed:.1f}s", style="green")
-        
+
         return Panel(header_text, style="on_dark_blue")
 
     def _render_content(self) -> Text:

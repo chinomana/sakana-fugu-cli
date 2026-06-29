@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -68,16 +69,16 @@ class Event:
 class EventBus:
     """
     Async event bus for decoupled communication between CLI components.
-    
+
     Usage:
         bus = EventBus()
-        
+
         # Subscribe
         bus.on(EventType.ORCH_ROUTING, handler_func)
-        
+
         # Emit
         await bus.emit(EventType.ORCH_ROUTING, {"model": "gpt-5.5", "confidence": 0.87})
-        
+
         # Shutdown
         await bus.close()
     """
@@ -102,10 +103,8 @@ class EventBus:
         self._running = False
         if self._dispatcher_task:
             self._dispatcher_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._dispatcher_task
-            except asyncio.CancelledError:
-                pass
         logger.info("event_bus_stopped")
 
     def on(self, event_type: EventType, handler: Callable[[Event], Any]) -> None:
@@ -129,7 +128,7 @@ class EventBus:
             try:
                 event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
                 await self._handle_event(event)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break

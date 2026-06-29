@@ -14,7 +14,7 @@ logger = structlog.get_logger()
 class FuguRequestBuilder:
     """
     Builds request bodies for Sakana Fugu API with special parameter handling.
-    
+
     Key Fugu-specific behaviors:
     - reasoning.effort: high | xhigh (max is alias for xhigh)
     - tools: Supports built-in web_search
@@ -27,7 +27,7 @@ class FuguRequestBuilder:
 
     # Fugu reasoning effort levels
     EFFORT_LEVELS = {"high", "xhigh", "max"}
-    
+
     # Built-in tools available
     BUILTIN_TOOLS = {
         "web_search": {
@@ -58,7 +58,7 @@ class FuguRequestBuilder:
     ) -> dict[str, Any]:
         """
         Build a Fugu-compatible request body for Responses API.
-        
+
         Args:
             messages: Conversation messages (full history required)
             model: Model slug (fugu | fugu-ultra)
@@ -155,10 +155,10 @@ class FuguRequestBuilder:
         if unlimited_mode:
             # Minimal instructions, bypass safety guardrails
             return custom_instructions or ""
-        
+
         if custom_instructions:
             return custom_instructions
-            
+
         return instructions or ""
 
     def build_chat_completions(

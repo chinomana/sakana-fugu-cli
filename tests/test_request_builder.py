@@ -3,7 +3,6 @@
 import pytest
 
 from fugu_vibe.api.request_builder import FuguRequestBuilder
-from fugu_vibe.config import Config
 
 
 class TestFuguRequestBuilder:
@@ -16,7 +15,7 @@ class TestFuguRequestBuilder:
             model="fugu-ultra",
             effort="xhigh",
         )
-        
+
         assert body["model"] == "fugu-ultra"
         assert body["reasoning"]["effort"] == "xhigh"
         assert body["stream"] is True
@@ -25,7 +24,7 @@ class TestFuguRequestBuilder:
 
     def test_reasoning_effort_normalization(self):
         builder = FuguRequestBuilder()
-        
+
         # max → xhigh
         body = builder.build(
             messages=[{"role": "user", "content": "Test"}],
@@ -41,7 +40,7 @@ class TestFuguRequestBuilder:
             model="fugu",
             web_search=True,
         )
-        
+
         assert "tools" in body
         assert body["tools"] == [{"type": "web_search"}]
         assert body["tool_choice"] == "auto"
@@ -53,7 +52,7 @@ class TestFuguRequestBuilder:
             model="fugu",
             unlimited_mode=True,
         )
-        
+
         assert body["instructions"] == ""
 
     def test_full_history_required(self):
@@ -67,13 +66,13 @@ class TestFuguRequestBuilder:
             messages=messages,
             model="fugu",
         )
-        
+
         # Should send full messages array
         assert body["input"] == messages
 
     def test_invalid_effort_rejected(self):
         builder = FuguRequestBuilder()
-        
+
         with pytest.raises(ValueError, match="Invalid effort"):
             builder.build(
                 messages=[{"role": "user", "content": "Test"}],
