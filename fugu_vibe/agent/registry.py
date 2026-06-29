@@ -34,6 +34,9 @@ class ToolRegistry:
     approval_callback: ApprovalCallback | None = None
     mcp_tools: MCPToolManager | None = None
 
+    def has_tool(self, name: str) -> bool:
+        return any(schema.get("name") == name for schema in self.schemas())
+
     def schemas(self) -> list[dict[str, Any]]:
         schemas = [
             self._schema(
@@ -260,14 +263,19 @@ class ToolRegistry:
                 }
             if name == "file_delete":
                 approved = await self.approve_file_operation(name, args)
-                return {"ok": True, **self.file_tools.delete_file(Path(str(args["path"])), approved=approved)}
+                return {
+                    "ok": True,
+                    **self.file_tools.delete_file(Path(str(args["path"])), approved=approved),
+                }
             if name == "file_mkdir":
                 approved = await self.approve_file_operation(name, args)
                 path = self.file_tools.make_directory(Path(str(args["path"])), approved=approved)
                 return {"ok": True, "path": path}
             if name == "bash":
                 approved = await self.approve_terminal_operation(name, args)
-                result = await self._run_terminal(str(args["command"]), str(args.get("cwd", ".")), approved=approved)
+                result = await self._run_terminal(
+                    str(args["command"]), str(args.get("cwd", ".")), approved=approved
+                )
                 return {"ok": result["exit_code"] == 0 and not result["timed_out"], **result}
             if name == "run_test":
                 approved = await self.approve_terminal_operation(name, args)
@@ -297,13 +305,19 @@ class ToolRegistry:
                 return {"ok": True, **self._git().status()}
             if name == "git_diff":
                 path = str(args.get("path", "")) or None
-                return {"ok": True, **self._git().diff(path=path, cached=self._bool_arg(args.get("cached", False)))}
+                return {
+                    "ok": True,
+                    **self._git().diff(path=path, cached=self._bool_arg(args.get("cached", False))),
+                }
             if name == "git_log":
                 return {"ok": True, **self._git().log(limit=int(args.get("limit", 10)))}
             if name == "git_show":
                 return {"ok": True, **self._git().show(revision=str(args.get("revision", "HEAD")))}
             if name == "mcp_list_tools" and self.mcp_tools is not None:
-                return {"ok": True, **await self.mcp_tools.list_tools(str(args.get("server") or "") or None)}
+                return {
+                    "ok": True,
+                    **await self.mcp_tools.list_tools(str(args.get("server") or "") or None),
+                }
             if name == "mcp_call" and self.mcp_tools is not None:
                 return await self.mcp_tools.call_tool(
                     str(args["server"]),
@@ -387,7 +401,11 @@ class ToolRegistry:
 
     def _write_preview(self, path: str, content: str) -> str:
         resolved = self._resolve_preview_path(path)
-        old_lines = resolved.read_text(encoding="utf-8").splitlines(keepends=True) if resolved.exists() else []
+        old_lines = (
+            resolved.read_text(encoding="utf-8").splitlines(keepends=True)
+            if resolved.exists()
+            else []
+        )
         new_lines = content.splitlines(keepends=True)
         if content and not content.endswith("\n"):
             new_lines[-1] = f"{new_lines[-1]}\n"
@@ -405,7 +423,11 @@ class ToolRegistry:
         old_content = resolved.read_text(encoding="utf-8") if resolved.exists() else ""
         count = old_content.count(old_string) if old_string else 0
         replacements = count if replace_all else min(count, 1)
-        new_content = old_content.replace(old_string, new_string, replacements) if replacements else old_content
+        new_content = (
+            old_content.replace(old_string, new_string, replacements)
+            if replacements
+            else old_content
+        )
         return "".join(
             difflib.unified_diff(
                 old_content.splitlines(keepends=True),
@@ -452,7 +474,9 @@ class ToolRegistry:
             return value.lower() in {"1", "true", "yes", "on"}
         return bool(value)
 
-    async def _run_terminal(self, command: str, cwd: str = ".", *, approved: bool = False) -> dict[str, Any]:
+    async def _run_terminal(
+        self, command: str, cwd: str = ".", *, approved: bool = False
+    ) -> dict[str, Any]:
         if self.terminal_tool is None:
             raise TerminalToolError("Terminal tool is not configured")
         return await self.terminal_tool.run_structured(command, cwd=cwd, approved=approved)
@@ -480,7 +504,9 @@ class ToolRegistry:
         summary["status"] = "passed" if result.get("exit_code") == 0 else "failed"
         return summary
 
-    def _extract_test_failures(self, result: dict[str, Any], limit: int = 5) -> list[dict[str, str]]:
+    def _extract_test_failures(
+        self, result: dict[str, Any], limit: int = 5
+    ) -> list[dict[str, str]]:
         output = f"{result.get('stdout', '')}\n{result.get('stderr', '')}"
         failures: list[dict[str, str]] = []
         current: dict[str, str] | None = None
@@ -509,4 +535,3 @@ class ToolRegistry:
             if current is not None and line.startswith((">", "E   ")):
                 current["snippet"] = (current.get("snippet", "") + "\n" + line).strip()
         return failures[:limit]
-

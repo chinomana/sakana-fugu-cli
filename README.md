@@ -142,7 +142,7 @@ Then use:
 /terminal git status
 ```
 
-The terminal tool is constrained to the workspace, blocks common destructive command patterns, applies a timeout, truncates displayed output, and saves full logs under `.fugu-vibe/tool-runs/`. Fugu does not yet invoke terminal tools automatically.
+The terminal tool is constrained to the workspace, blocks common destructive command patterns, applies a timeout, truncates displayed output, and saves full logs under `.fugu-vibe/tool-runs/`. Safe validation commands such as `run_test` can run automatically after successful edits when `[tools] auto_test_after_edit = true`.
 
 Patch application defaults to `ask-apply`. `/apply <patch-file>` validates patch paths, runs `git apply --check`, shows the diff, and asks for `yes` before applying. Set `[patch] mode = "propose-only"` to disable applying patches from the CLI.
 
@@ -294,6 +294,11 @@ auto_merge = true
 
 [prompt]
 unlimited_mode = false
+
+[tools]
+max_tool_rounds = 10
+auto_test_after_edit = true
+auto_test_command = "python -m pytest -q"
 ```
 
 Do not commit API keys or local config containing secrets.

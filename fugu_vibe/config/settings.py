@@ -122,6 +122,9 @@ class ToolConfig(BaseSettings):
     terminal_approval: Literal["off", "ask", "auto-safe"] = "auto-safe"
     terminal_timeout_seconds: int = 120
     max_output_chars: int = 20_000
+    max_tool_rounds: int = 10
+    auto_test_after_edit: bool = True
+    auto_test_command: str = "python -m pytest -q"
 
 
 class MCPConfig(BaseSettings):

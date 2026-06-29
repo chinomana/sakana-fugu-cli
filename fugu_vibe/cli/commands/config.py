@@ -31,6 +31,7 @@ def config_show(ctx: click.Context, as_json: bool) -> None:
 
     if as_json:
         import json
+
         console.print(json.dumps(config.model_dump(), indent=2))
         return
 
@@ -157,13 +158,16 @@ git_default_branch = "{config.tasks.git_default_branch}"
 
 [prompt]
 unlimited_mode = {str(config.prompt.unlimited_mode).lower()}
-custom_instructions = "{config.prompt.custom_instructions or ''}"
+custom_instructions = "{config.prompt.custom_instructions or ""}"
 
 [tools]
 terminal_enabled = {str(config.tools.terminal_enabled).lower()}
 terminal_approval = "{config.tools.terminal_approval}"
 terminal_timeout_seconds = {config.tools.terminal_timeout_seconds}
 max_output_chars = {config.tools.max_output_chars}
+max_tool_rounds = {config.tools.max_tool_rounds}
+auto_test_after_edit = {str(config.tools.auto_test_after_edit).lower()}
+auto_test_command = "{config.tools.auto_test_command}"
 
 [patch]
 mode = "{config.patch.mode}"

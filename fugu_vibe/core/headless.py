@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fugu_vibe.agent import AgentLoop, ToolRegistry
+from fugu_vibe.agent.loop import AgentLoop
+from fugu_vibe.agent.registry import ToolRegistry
 from fugu_vibe.api.client import FuguClient
 from fugu_vibe.config import Config
 from fugu_vibe.core.effort import select_effort
@@ -57,7 +58,9 @@ async def run_headless(
 ) -> HeadlessResult:
     """Run one Fugu task without an interactive prompt."""
     config = config or Config()
-    workspace_path = await asyncio.to_thread(lambda: Path(workspace or Path.cwd()).expanduser().resolve())
+    workspace_path = await asyncio.to_thread(
+        lambda: Path(workspace or Path.cwd()).expanduser().resolve()
+    )
     own_client = client is None
     own_bus = event_bus is None
     event_bus = event_bus or EventBus()
@@ -78,7 +81,14 @@ async def run_headless(
             workspace_path,
         )
         response_parts: list[str] = []
-        loop = AgentLoop(fugu_client, registry, event_bus)
+        loop = AgentLoop(
+            fugu_client,
+            registry,
+            event_bus,
+            max_tool_rounds=config.tools.max_tool_rounds,
+            auto_test_after_edit=config.tools.auto_test_after_edit,
+            auto_test_command=config.tools.auto_test_command,
+        )
         result = await loop.run(
             messages=[{"role": "user", "content": prompt}],
             model=config.model.default,

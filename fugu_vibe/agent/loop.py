@@ -15,6 +15,12 @@ class StreamingClient(Protocol):
     def send(self, **kwargs: Any): ...
 
 
+DEFAULT_MAX_TOOL_ROUNDS = 10
+DEFAULT_AUTO_TEST_COMMAND = "python -m pytest -q"
+MUTATING_TOOLS = {"file_write", "file_edit", "file_delete", "file_mkdir"}
+VALIDATION_TOOLS = {"run_test", "run_lint", "bash"}
+
+
 @dataclass
 class AgentLoopResult:
     """Final result from one agent turn."""
@@ -31,7 +37,10 @@ class AgentLoop:
     client: StreamingClient
     registry: ToolRegistry
     event_bus: EventBus
-    max_tool_rounds: int = 3
+    max_tool_rounds: int = DEFAULT_MAX_TOOL_ROUNDS
+    auto_test_after_edit: bool = True
+    auto_test_command: str = DEFAULT_AUTO_TEST_COMMAND
+    _auto_test_counter: int = field(default=0, init=False)
 
     async def run(
         self,
@@ -126,7 +135,8 @@ class AgentLoop:
                 return result
 
             new_tool_calls = [
-                tool_call for tool_call in tool_calls
+                tool_call
+                for tool_call in tool_calls
                 if self._tool_signature(tool_call) not in executed_tools
             ]
             if not new_tool_calls:
@@ -143,6 +153,7 @@ class AgentLoop:
                 current_messages.append({"role": "assistant", "content": content})
             call_items = self._tool_call_items(new_tool_calls, output_items)
             current_messages.extend(call_items)
+            mutation_without_validation = False
             for tool_call in new_tool_calls:
                 executed_tools.add(self._tool_signature(tool_call))
                 result.tool_calls.append(tool_call)
@@ -167,6 +178,24 @@ class AgentLoop:
                     source="agent_loop",
                 )
                 current_messages.append(self._tool_result_message(tool_call, tool_result))
+                normalized_name = str(tool_call.get("name", "")).replace(".", "_")
+                if tool_result.get("ok") and normalized_name in MUTATING_TOOLS:
+                    mutation_without_validation = True
+                if normalized_name in VALIDATION_TOOLS:
+                    mutation_without_validation = False
+            if (
+                mutation_without_validation
+                and self.auto_test_after_edit
+                and self.registry.has_tool("run_test")
+            ):
+                test_call, test_result = await self._run_auto_test()
+                result.tool_calls.append(test_call)
+                current_messages.extend(
+                    [
+                        self._tool_call_items([test_call], [])[0],
+                        self._tool_result_message(test_call, test_result),
+                    ]
+                )
             current_messages.append(
                 {
                     "role": "user",
@@ -175,6 +204,32 @@ class AgentLoop:
             )
 
         return result
+
+    async def _run_auto_test(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        self._auto_test_counter += 1
+        tool_call = {
+            "type": "function_call",
+            "call_id": f"auto-test-after-edit-{self._auto_test_counter}",
+            "name": "run_test",
+            "arguments": json.dumps({"command": self.auto_test_command}),
+        }
+        await self.event_bus.emit(
+            EventType.STREAM_TOOL_CALL,
+            {"tool_call": tool_call, "automatic": True},
+            source="agent_loop",
+        )
+        tool_result = await self.registry.dispatch("run_test", {"command": self.auto_test_command})
+        await self.event_bus.emit(
+            EventType.STREAM_TOOL_RESULT,
+            {
+                "tool_call": tool_call,
+                "ok": bool(tool_result.get("ok")),
+                "summary": self._tool_result_summary(tool_result),
+                "automatic": True,
+            },
+            source="agent_loop",
+        )
+        return tool_call, tool_result
 
     def _tool_result_message(
         self,

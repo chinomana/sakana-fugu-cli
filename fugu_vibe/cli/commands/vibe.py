@@ -60,7 +60,9 @@ Avoid repeatedly calling the same tool with the same arguments.
 
 @click.command()
 @click.option("--model", "-m", help="Model to use")
-@click.option("--effort", "-e", type=click.Choice(["high", "xhigh", "max"]), help="Reasoning effort")
+@click.option(
+    "--effort", "-e", type=click.Choice(["high", "xhigh", "max"]), help="Reasoning effort"
+)
 @click.option("--web-search", "-w", is_flag=True, help="Enable web search")
 @click.option(
     "--viz/--no-viz",
@@ -124,7 +126,11 @@ def vibe_command(
         config.prompt.unlimited_mode = True
 
     # Run async session
-    asyncio.run(_vibe_session(config, web_search, viz, voice, list(files), workspace, config_path, resume_session))
+    asyncio.run(
+        _vibe_session(
+            config, web_search, viz, voice, list(files), workspace, config_path, resume_session
+        )
+    )
 
 
 async def _vibe_session(
@@ -161,6 +167,7 @@ async def _vibe_session(
     voice_pipeline = None
     if voice_enabled:
         from fugu_vibe.voice.pipeline import VoicePipeline
+
         voice_pipeline = VoicePipeline(config, task_manager, event_bus)
         try:
             await voice_pipeline.start()
@@ -225,11 +232,15 @@ async def _vibe_session(
         console.print(f"[dim]Loaded {len(context.history) // 2} prior turn(s).[/dim]")
 
     console.print("Type your prompt and press Enter")
-    console.print("Commands: /context /index /select /compact /ls /read /search /diff /apply /tools /terminal /quit /help")
+    console.print(
+        "Commands: /context /index /select /compact /ls /read /search /diff /apply /tools /terminal /quit /help"
+    )
     console.print("Exit: Ctrl+C or Ctrl+D\n")
     console.print(f"[dim]Session output: {output_writer.path}[/dim]")
     if context.attachments:
-        console.print(f"[dim]Attached {len(context.attachments)} file(s). Use /files to list them.[/dim]\n")
+        console.print(
+            f"[dim]Attached {len(context.attachments)} file(s). Use /files to list them.[/dim]\n"
+        )
 
     try:
         while True:
@@ -325,14 +336,13 @@ async def _send_to_fugu(
     if files:
         names = ", ".join(path.name for path in files)
         console.print(f"[dim]Attachments: {names}[/dim]")
-    console.print(
-        f"[dim]Effort: {effort_decision.effort} ({effort_decision.reason})[/dim]"
-    )
+    console.print(f"[dim]Effort: {effort_decision.effort} ({effort_decision.reason})[/dim]")
     console.print("[dim]Thinking...[/dim]", end="")
     output_writer.start_turn(prompt, files)
     response_parts: list[str] = []
 
     try:
+
         def on_content(content_piece: str):
             if content_piece:
                 response_parts.append(content_piece)
@@ -343,7 +353,14 @@ async def _send_to_fugu(
             name = tool_call.get("name", "unknown")
             console.print(f"\n[dim]Tool call: {name}[/dim]")
 
-        agent_loop = AgentLoop(client, tool_registry, event_bus)
+        agent_loop = AgentLoop(
+            client,
+            tool_registry,
+            event_bus,
+            max_tool_rounds=config.tools.max_tool_rounds,
+            auto_test_after_edit=config.tools.auto_test_after_edit,
+            auto_test_command=config.tools.auto_test_command,
+        )
         result = await agent_loop.run(
             messages=messages,
             model=config.model.default,
@@ -355,7 +372,9 @@ async def _send_to_fugu(
             on_tool_call=on_tool_call,
         )
         if result.tool_calls:
-            context.record_tool_usage("agent.tools", {"count": len(result.tool_calls)}, len(result.tool_calls))
+            context.record_tool_usage(
+                "agent.tools", {"count": len(result.tool_calls)}, len(result.tool_calls)
+            )
             _maybe_create_turn_checkpoint(config, checkpoint_manager, result.tool_calls)
         if result.content and not response_parts:
             on_content(result.content)
@@ -370,7 +389,9 @@ async def _send_to_fugu(
             captured_patch = capture_unified_diff(response)
             if captured_patch:
                 try:
-                    PatchTool(Path.cwd()).check(captured_patch.latest_path.read_text(encoding="utf-8"))
+                    PatchTool(Path.cwd()).check(
+                        captured_patch.latest_path.read_text(encoding="utf-8")
+                    )
                     console.print(
                         f"\n[green]Saved proposed patch:[/green] {captured_patch.latest_path}\n"
                         f"[dim]Review/apply with: /apply {captured_patch.latest_path}[/dim]"
@@ -393,7 +414,15 @@ def _maybe_create_turn_checkpoint(
 ) -> None:
     if not config.safety.checkpoint_enabled or not config.safety.checkpoint_each_turn:
         return
-    mutating_tools = {"file_write", "file_edit", "file_delete", "file_mkdir", "bash", "run_test", "run_lint"}
+    mutating_tools = {
+        "file_write",
+        "file_edit",
+        "file_delete",
+        "file_mkdir",
+        "bash",
+        "run_test",
+        "run_lint",
+    }
     used_tools = {str(call.get("name", "")).replace(".", "_") for call in tool_calls}
     if not mutating_tools.intersection(used_tools):
         return
@@ -432,7 +461,13 @@ async def _handle_command(
     elif command == "/tasks":
         status = await task_manager.status()
         for task in status["tasks"]:
-            icon = "🔄" if task['status'] == 'running' else "✅" if task['status'] == 'completed' else "⏳"
+            icon = (
+                "🔄"
+                if task["status"] == "running"
+                else "✅"
+                if task["status"] == "completed"
+                else "⏳"
+            )
             console.print(f"  {icon} {task['name']} [{task['status']}]")
 
     elif command == "/attach":
@@ -528,7 +563,7 @@ async def _handle_command(
             context.record_tool_usage("patch.apply", {"path": args[0], "mode": patch_mode}, count)
 
     elif command == "/terminal":
-        command_text = cmd[len("/terminal"):].strip()
+        command_text = cmd[len("/terminal") :].strip()
         if not command_text:
             console.print("[red]Usage:[/red] /terminal COMMAND")
         else:
@@ -707,7 +742,9 @@ def _print_tools_status(terminal_tool: TerminalTool) -> None:
         str(status.get("safety_mode", status["terminal_approval"])),
     )
     console.print(table)
-    console.print(f"[dim]Timeout: {status['timeout_seconds']}s, max output: {status['max_output_chars']} chars[/dim]")
+    console.print(
+        f"[dim]Timeout: {status['timeout_seconds']}s, max output: {status['max_output_chars']} chars[/dim]"
+    )
 
 
 async def _run_terminal_command(terminal_tool: TerminalTool, command: str) -> int:
@@ -718,7 +755,9 @@ async def _run_terminal_command(terminal_tool: TerminalTool, command: str) -> in
         return 0
 
     status = "timed out" if result.timed_out else f"exit {result.exit_code}"
-    console.print(f"[dim]terminal.run {result.run_id}: {status} in {result.duration_seconds:.2f}s[/dim]")
+    console.print(
+        f"[dim]terminal.run {result.run_id}: {status} in {result.duration_seconds:.2f}s[/dim]"
+    )
     if result.stdout:
         console.print("[bold]stdout[/bold]")
         console.print(result.stdout)
@@ -762,7 +801,9 @@ def _print_checkpoints(checkpoint_manager: CheckpointManager) -> int:
     return len(checkpoints)
 
 
-def _undo_checkpoint(checkpoint_manager: CheckpointManager, checkpoint_id: str | None = None) -> int:
+def _undo_checkpoint(
+    checkpoint_manager: CheckpointManager, checkpoint_id: str | None = None
+) -> int:
     try:
         result = checkpoint_manager.undo(checkpoint_id)
     except CheckpointError as e:
