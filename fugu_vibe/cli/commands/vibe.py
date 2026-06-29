@@ -26,6 +26,7 @@ from fugu_vibe.core.attachments import build_content_parts
 from fugu_vibe.core.event_bus import EventBus, EventType
 from fugu_vibe.core.event_log import EventLogWriter
 from fugu_vibe.core.orchestration import OrchestrationAnalyzer
+from fugu_vibe.core.patch_capture import capture_unified_diff
 from fugu_vibe.core.session_output import SessionOutputWriter
 from fugu_vibe.core.task_manager import TaskManager
 from fugu_vibe.tools import FileToolError, FileTools, PatchTool, PatchToolError, TerminalTool, TerminalToolError
@@ -276,6 +277,19 @@ async def _send_to_fugu(
     finally:
         response = "".join(response_parts)
         if response:
+            captured_patch = capture_unified_diff(response)
+            if captured_patch:
+                try:
+                    PatchTool(Path.cwd()).check(captured_patch.latest_path.read_text(encoding="utf-8"))
+                    console.print(
+                        f"\n[green]Saved proposed patch:[/green] {captured_patch.latest_path}\n"
+                        f"[dim]Review/apply with: /apply {captured_patch.latest_path}[/dim]"
+                    )
+                except PatchToolError as e:
+                    console.print(
+                        f"\n[yellow]Saved proposed patch, but git apply --check failed:[/yellow] {captured_patch.latest_path}\n"
+                        f"[red]{e}[/red]"
+                    )
             context.add_turn(user_message, response)
         await analyzer.finalize()
         output_writer.end_turn()
