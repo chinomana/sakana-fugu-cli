@@ -43,6 +43,9 @@ async def _dashboard_session(
     poll_interval: float,
 ) -> None:
     log_path = event_log_path(path)
+    console.print(f"[dim]Watching event log: {log_path}[/dim]")
+    if not log_path.exists():
+        console.print("[yellow]Waiting for a vibe session to create events...[/yellow]")
     event_bus = EventBus()
     await event_bus.start()
     dashboard = OrchestrationDashboard(config, event_bus)

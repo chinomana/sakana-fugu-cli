@@ -111,17 +111,21 @@ class OrchestrationDashboard:
         self.event_bus.on(EventType.ORCH_DONE, self._on_done)
         self.event_bus.on(EventType.STREAM_CONTENT, self._on_content)
         self.event_bus.on(EventType.STREAM_REASONING, self._on_reasoning)
+        self.event_bus.on(EventType.STREAM_TOOL_CALL, self._on_tool_call)
+        self.event_bus.on(EventType.STREAM_TOKEN_USAGE, self._on_stream_token_usage)
         self.event_bus.on(EventType.TOKEN_UPDATE, self._on_token_update)
         self.event_bus.on(EventType.TASK_CREATED, self._on_task_update)
         self.event_bus.on(EventType.TASK_STARTED, self._on_task_update)
         self.event_bus.on(EventType.TASK_COMPLETED, self._on_task_update)
         
+        self._render_layout()
+
         # Start live display
         self._live = Live(
             self.layout,
             console=self.console,
             refresh_per_second=4,
-            screen=True,
+            screen=False,
         )
         self._live.start()
         
@@ -150,18 +154,15 @@ class OrchestrationDashboard:
         """Periodically update the dashboard display."""
         while self._running:
             try:
-                self._render()
+                self._render_layout()
                 await asyncio.sleep(0.25)  # 4 FPS
             except asyncio.CancelledError:
                 break
             except Exception:
                 logger.exception("dashboard_update_error")
 
-    def _render(self) -> None:
+    def _render_layout(self) -> None:
         """Render all dashboard panels."""
-        if not self._live:
-            return
-            
         # Header
         self.layout["header"].update(self._render_header())
         
@@ -216,6 +217,9 @@ class OrchestrationDashboard:
         """Render streaming content panel."""
         content = Text()
         lines = self._stream_content[-self._max_content_lines:]
+        if not lines:
+            content.append("Waiting for workspace events...", style="dim")
+            return content
         for i, line in enumerate(lines):
             content.append(line)
             if i < len(lines) - 1:
@@ -256,11 +260,25 @@ class OrchestrationDashboard:
 
     def _on_content(self, event: Event) -> None:
         content = event.data.get("content", "")
-        self._stream_content.extend(content.split("\n"))
+        if content:
+            self._stream_content.extend(content.split("\n"))
 
     def _on_reasoning(self, event: Event) -> None:
         content = event.data.get("content", "")
-        self._stream_content.append(f"[thinking] {content}")
+        if content:
+            self._stream_content.append(f"[thinking] {content}")
+
+    def _on_tool_call(self, event: Event) -> None:
+        tool_call = event.data.get("tool_call", {})
+        name = tool_call.get("name", "unknown") if isinstance(tool_call, dict) else "unknown"
+        self._stream_content.append(f"[tool] {name}")
+
+    def _on_stream_token_usage(self, event: Event) -> None:
+        self.token_meter.update(
+            input_tokens=event.data.get("input_tokens", 0),
+            output_tokens=event.data.get("output_tokens", 0),
+            orchestration_tokens=event.data.get("orchestration_tokens", 0),
+        )
 
     def _on_token_update(self, event: Event) -> None:
         self.token_meter.update(

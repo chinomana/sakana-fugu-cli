@@ -69,6 +69,7 @@ class StreamParser:
         self._current_tool_call: dict | None = None
         self._response_items: dict[str, dict[str, Any]] = {}
         self._function_arguments: dict[str, str] = {}
+        self._emitted_function_calls: set[str] = set()
 
     def parse_sse_chunk(self, data: str) -> StreamChunk | None:
         """
@@ -149,6 +150,11 @@ class StreamParser:
                     output_item=item,
                 )
             if item_type == "function_call":
+                call_key = item.get("call_id") or item_id
+                if call_key in self._emitted_function_calls:
+                    return None
+                if call_key:
+                    self._emitted_function_calls.add(call_key)
                 return StreamChunk(
                     type="tool_call",
                     tool_call={
@@ -171,6 +177,11 @@ class StreamParser:
                 "arguments": arguments,
                 "call_id": event.get("call_id") or cached_item.get("call_id", ""),
             }
+            call_key = output_item.get("call_id") or item_id
+            if call_key in self._emitted_function_calls:
+                return None
+            if call_key:
+                self._emitted_function_calls.add(call_key)
             return StreamChunk(
                 type="tool_call",
                 tool_call={

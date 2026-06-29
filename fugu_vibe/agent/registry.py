@@ -20,7 +20,7 @@ class ToolRegistry:
         return [
             {
                 "type": "function",
-                "name": "file.list",
+                "name": "file_list",
                 "description": "List files in the current workspace. Read-only.",
                 "parameters": {
                     "type": "object",
@@ -34,7 +34,7 @@ class ToolRegistry:
             },
             {
                 "type": "function",
-                "name": "file.read",
+                "name": "file_read",
                 "description": "Read a UTF-8 text file from the workspace. Read-only.",
                 "parameters": {
                     "type": "object",
@@ -50,7 +50,7 @@ class ToolRegistry:
             },
             {
                 "type": "function",
-                "name": "file.search",
+                "name": "file_search",
                 "description": "Search UTF-8 workspace files for a literal query. Read-only.",
                 "parameters": {
                     "type": "object",
@@ -67,22 +67,23 @@ class ToolRegistry:
         ]
 
     async def dispatch(self, name: str, arguments: str | dict[str, Any]) -> dict[str, Any]:
+        name = name.replace(".", "_")
         args = self._parse_arguments(arguments)
         try:
-            if name == "file.list":
+            if name == "file_list":
                 files = self.file_tools.list_files(
                     pattern=str(args.get("pattern", "**/*")),
                     limit=int(args.get("limit", 200)),
                 )
                 return {"ok": True, "files": files, "count": len(files)}
-            if name == "file.read":
+            if name == "file_read":
                 content = self.file_tools.read_file(
                     Path(str(args["path"])),
                     start_line=int(args.get("start_line", 1)),
                     limit=int(args.get("limit", 200)),
                 )
                 return {"ok": True, "path": str(args["path"]), "content": content}
-            if name == "file.search":
+            if name == "file_search":
                 matches = self.file_tools.search(
                     query=str(args["query"]),
                     pattern=str(args.get("pattern", "**/*")),

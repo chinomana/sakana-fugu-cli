@@ -119,8 +119,10 @@ async def _vibe_session(
     # Start dashboard
     dashboard = None
     if viz_enabled:
-        dashboard = OrchestrationDashboard(config, event_bus)
-        await dashboard.start()
+        console.print(
+            "[yellow]Inline dashboard is disabled to keep keyboard input stable.[/yellow] "
+            "[dim]Run `fugu-vibe dashboard` in a second terminal instead.[/dim]"
+        )
     
     # Start voice if requested
     voice_pipeline = None
