@@ -169,6 +169,8 @@ max_tool_rounds = {config.tools.max_tool_rounds}
 auto_test_after_edit = {str(config.tools.auto_test_after_edit).lower()}
 auto_test_command = "{config.tools.auto_test_command}"
 auto_compile_after_edit = {str(config.tools.auto_compile_after_edit).lower()}
+auto_lint_after_edit = {str(config.tools.auto_lint_after_edit).lower()}
+auto_lint_command = "{config.tools.auto_lint_command}"
 
 [patch]
 mode = "{config.patch.mode}"

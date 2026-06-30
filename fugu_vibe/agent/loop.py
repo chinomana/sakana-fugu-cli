@@ -24,6 +24,7 @@ class StreamingClient(Protocol):
 
 DEFAULT_MAX_TOOL_ROUNDS = 10
 DEFAULT_AUTO_TEST_COMMAND = "python -m pytest -q"
+DEFAULT_AUTO_LINT_COMMAND = "ruff check ."
 MUTATING_TOOLS = {"file_write", "file_edit", "file_delete", "file_mkdir"}
 VALIDATION_TOOLS = {"run_test", "run_lint", "bash"}
 PYTHON_SUFFIXES = {".py", ".pyw"}
@@ -36,6 +37,7 @@ class AgentLoopResult:
     content: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     rounds: int = 0
+    automatic_verification: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -49,8 +51,11 @@ class AgentLoop:
     auto_test_after_edit: bool = True
     auto_test_command: str = DEFAULT_AUTO_TEST_COMMAND
     auto_compile_after_edit: bool = True
+    auto_lint_after_edit: bool = True
+    auto_lint_command: str = DEFAULT_AUTO_LINT_COMMAND
     _auto_test_counter: int = field(default=0, init=False)
     _auto_compile_counter: int = field(default=0, init=False)
+    _auto_lint_counter: int = field(default=0, init=False)
 
     async def run(
         self,
@@ -143,6 +148,7 @@ class AgentLoop:
             content = "".join(content_parts)
             if not tool_calls:
                 result.content += content
+                result.automatic_verification = self._verification_summary()
                 if content:
                     if on_content:
                         on_content(content)
@@ -153,7 +159,11 @@ class AgentLoop:
                     )
                 await self.event_bus.emit(
                     EventType.AGENT_DONE,
-                    {"rounds": result.rounds, "tool_calls": len(result.tool_calls)},
+                    {
+                        "rounds": result.rounds,
+                        "tool_calls": len(result.tool_calls),
+                        "automatic_verification": result.automatic_verification,
+                    },
                     source="agent_loop",
                 )
                 return result
@@ -167,9 +177,14 @@ class AgentLoop:
                     {"content": message},
                     source="agent_loop",
                 )
+                result.automatic_verification = self._verification_summary()
                 await self.event_bus.emit(
                     EventType.AGENT_STOPPED,
-                    {"reason": "max_tool_rounds", "rounds": result.rounds},
+                    {
+                        "reason": "max_tool_rounds",
+                        "rounds": result.rounds,
+                        "automatic_verification": result.automatic_verification,
+                    },
                     source="agent_loop",
                 )
                 return result
@@ -227,13 +242,26 @@ class AgentLoop:
                     mutation_without_validation = False
             if mutation_without_validation:
                 verification_items = await self._run_auto_verification(mutated_paths)
+                verification_failed = False
                 for verification_call, verification_result in verification_items:
                     result.tool_calls.append(verification_call)
+                    verification_failed = verification_failed or not verification_result.get("ok")
                     current_messages.extend(
                         [
                             self._tool_call_items([verification_call], [])[0],
                             self._tool_result_message(verification_call, verification_result),
                         ]
+                    )
+                result.automatic_verification = self._verification_summary()
+                if verification_failed:
+                    current_messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Automatic verification failed. Inspect the failure output, "
+                                "apply a repair with file tools, and run verification again before finalizing."
+                            ),
+                        }
                     )
             await self.event_bus.emit(
                 EventType.AGENT_ROUND_END,
@@ -241,6 +269,7 @@ class AgentLoop:
                     "round": round_index + 1,
                     "tool_calls": len(new_tool_calls),
                     "mutated_paths": sorted(mutated_paths),
+                    "automatic_verification": self._verification_summary(),
                 },
                 source="agent_loop",
             )
@@ -261,21 +290,34 @@ class AgentLoop:
         if self.auto_compile_after_edit and self.registry.has_tool("bash"):
             compile_command = self._python_compile_command(mutated_paths)
             if compile_command:
+                compile_item = await self._run_automatic_tool(
+                    "bash",
+                    {"command": compile_command},
+                    "auto-py-compile-after-edit",
+                )
+                verification_items.append(compile_item)
+                if not compile_item[1].get("ok"):
+                    return verification_items
+        if self.auto_lint_after_edit and self.registry.has_tool("run_lint"):
+            lint_command = self._auto_lint_command(mutated_paths)
+            if lint_command:
                 verification_items.append(
                     await self._run_automatic_tool(
-                        "bash",
-                        {"command": compile_command},
-                        "auto-py-compile-after-edit",
+                        "run_lint",
+                        {"command": lint_command},
+                        "auto-lint-after-edit",
                     )
                 )
         if self.auto_test_after_edit and self.registry.has_tool("run_test"):
-            verification_items.append(
-                await self._run_automatic_tool(
-                    "run_test",
-                    {"command": self.auto_test_command},
-                    "auto-test-after-edit",
+            test_command = self._auto_test_command(mutated_paths)
+            if test_command:
+                verification_items.append(
+                    await self._run_automatic_tool(
+                        "run_test",
+                        {"command": test_command},
+                        "auto-test-after-edit",
+                    )
                 )
-            )
         return verification_items
 
     async def _run_automatic_tool(
@@ -287,6 +329,9 @@ class AgentLoop:
         if name == "run_test":
             self._auto_test_counter += 1
             counter = self._auto_test_counter
+        elif name == "run_lint":
+            self._auto_lint_counter += 1
+            counter = self._auto_lint_counter
         else:
             self._auto_compile_counter += 1
             counter = self._auto_compile_counter
@@ -331,6 +376,63 @@ class AgentLoop:
             return None
         quoted_paths = " ".join(shlex.quote(f"./{path}") for path in python_paths)
         return f"python -m py_compile {quoted_paths}"
+
+    def _auto_lint_command(self, mutated_paths: set[str]) -> str | None:
+        """Return a lint command when edited files are likely lintable."""
+        if not self.auto_lint_command.strip():
+            return None
+        if not mutated_paths or any(
+            PurePosixPath(path).suffix.lower() in PYTHON_SUFFIXES for path in mutated_paths
+        ):
+            return self.auto_lint_command
+        return None
+
+    def _auto_test_command(self, mutated_paths: set[str]) -> str | None:
+        """Return the test command, narrowed to colocated pytest files when obvious."""
+        command = self.auto_test_command.strip()
+        if not command:
+            return None
+        if not self._is_default_pytest_command(command):
+            return command
+        candidate_tests = self._candidate_pytest_files(mutated_paths)
+        existing_tests = [
+            path for path in candidate_tests if (self.registry.file_tools.workspace / path).is_file()
+        ]
+        if existing_tests:
+            quoted = " ".join(shlex.quote(f"./{path}") for path in existing_tests)
+            return f"python -m pytest -q {quoted}"
+        return command
+
+    def _candidate_pytest_files(self, mutated_paths: set[str]) -> list[str]:
+        candidates: list[str] = []
+        for path in sorted(mutated_paths):
+            pure_path = PurePosixPath(path)
+            if pure_path.suffix.lower() not in PYTHON_SUFFIXES:
+                continue
+            if pure_path.name.startswith("test_") or pure_path.name.endswith("_test.py"):
+                candidates.append(path)
+                continue
+            candidates.extend(
+                [
+                    str(PurePosixPath("tests") / f"test_{pure_path.name}"),
+                    str(pure_path.parent / "tests" / f"test_{pure_path.name}"),
+                    str(pure_path.with_name(f"test_{pure_path.name}")),
+                ]
+            )
+        return list(dict.fromkeys(candidates))
+
+    def _is_default_pytest_command(self, command: str) -> bool:
+        return command in {"python -m pytest -q", "pytest -q", "python -m pytest", "pytest"}
+
+    def _verification_summary(self) -> dict[str, int]:
+        """Return automatic verification counters for events and task metadata."""
+        total = self._auto_compile_counter + self._auto_lint_counter + self._auto_test_counter
+        return {
+            "compile": self._auto_compile_counter,
+            "lint": self._auto_lint_counter,
+            "test": self._auto_test_counter,
+            "total": total,
+        }
 
     def _tool_result_message(
         self,

@@ -218,6 +218,15 @@ class TaskTree:
                 confidence_text = f", confidence {confidence:.0%}" if isinstance(confidence, float) else ""
                 node.add(f"⚙️ workers {workers}, checks {verifications}{confidence_text}")
 
+            verification = task.get("automatic_verification") or {}
+            if verification:
+                node.add(
+                    "🧪 auto checks "
+                    f"{verification.get('total', 0)} "
+                    f"(compile {verification.get('compile', 0)}, "
+                    f"lint {verification.get('lint', 0)}, test {verification.get('test', 0)})"
+                )
+
             deps = task.get("depends_on", [])
             if deps:
                 deps_str = ", ".join(deps)

@@ -366,6 +366,8 @@ async def _send_to_fugu(
             auto_test_after_edit=config.tools.auto_test_after_edit,
             auto_test_command=config.tools.auto_test_command,
             auto_compile_after_edit=config.tools.auto_compile_after_edit,
+            auto_lint_after_edit=config.tools.auto_lint_after_edit,
+            auto_lint_command=config.tools.auto_lint_command,
         )
         result = await agent_loop.run(
             messages=messages,

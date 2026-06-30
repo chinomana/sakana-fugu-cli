@@ -33,6 +33,7 @@ class HeadlessResult:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     rounds: int = 0
     effort: str = "xhigh"
+    automatic_verification: dict[str, int] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -45,6 +46,7 @@ class HeadlessResult:
             "tool_calls": self.tool_calls,
             "rounds": self.rounds,
             "effort": self.effort,
+            "automatic_verification": self.automatic_verification,
         }
 
 
@@ -92,6 +94,8 @@ async def run_headless(
             auto_test_after_edit=config.tools.auto_test_after_edit,
             auto_test_command=config.tools.auto_test_command,
             auto_compile_after_edit=config.tools.auto_compile_after_edit,
+            auto_lint_after_edit=config.tools.auto_lint_after_edit,
+            auto_lint_command=config.tools.auto_lint_command,
         )
         result = await loop.run(
             messages=[{"role": "user", "content": prompt}],
@@ -110,6 +114,7 @@ async def run_headless(
             tool_calls=result.tool_calls,
             rounds=result.rounds,
             effort=effort_decision.effort,
+            automatic_verification=result.automatic_verification,
         )
     finally:
         if own_client:

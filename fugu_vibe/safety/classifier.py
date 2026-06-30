@@ -69,6 +69,7 @@ SAFE_PATTERNS = tuple(
         r"^python\s+-m\s+py_compile(?:\s|$)",
         r"^pytest(?:\s|$)",
         r"^ruff\s+check(?:\s|$)",
+        r"^python\s+-m\s+ruff\s+check(?:\s|$)",
         r"^mypy(?:\s|$)",
         r"^npm\s+test(?:\s|$)",
         r"^pnpm\s+test(?:\s|$)",

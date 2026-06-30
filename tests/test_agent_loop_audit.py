@@ -66,6 +66,7 @@ async def test_agent_loop_auto_runs_tests_after_file_edit(tmp_path: Path) -> Non
 
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello\n"
     assert [call["name"] for call in result.tool_calls] == ["file_write", "run_test"]
+    assert result.automatic_verification == {"compile": 0, "lint": 0, "test": 1, "total": 1}
     assert result.content == "finished"
     assert {schema["name"] for schema in client.calls[0]["tools"]} >= {
         "file_write",
@@ -111,10 +112,51 @@ async def test_agent_loop_auto_compiles_python_edits_and_repairs(tmp_path: Path)
         "bash",
         "file_edit",
         "bash",
+        "run_lint",
     ]
+    assert result.automatic_verification == {"compile": 2, "lint": 1, "test": 0, "total": 3}
     assert result.tool_calls[1]["arguments"] == '{"command": "python -m py_compile ./game.py"}'
-    assert "IndentationError" in client.calls[1]["messages"][-2]["output"]
+    assert any("IndentationError" in message.get("output", "") for message in client.calls[1]["messages"])
+    assert any("Automatic verification failed" in message.get("content", "") for message in client.calls[1]["messages"])
     assert result.content == "fixed"
+
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_auto_lints_and_targets_existing_pytest_file(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("def answer():\n    return 41\n", encoding="utf-8")
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_app.py").write_text(
+        "from app import answer\n\n\ndef test_answer():\n    assert answer() == 42\n",
+        encoding="utf-8",
+    )
+    tool_call = {
+        "call_id": "call-1",
+        "name": "file_edit",
+        "arguments": '{"path":"app.py","old_string":"return 41","new_string":"return 42"}',
+    }
+    client = SequencedClient(
+        [
+            [StreamChunk(type="tool_call", tool_call=tool_call)],
+            [StreamChunk(type="content", content="verified")],
+        ]
+    )
+    registry = ToolRegistry(
+        FileTools(tmp_path, safety_mode="auto-edit"),
+        terminal_tool=TerminalTool(
+            tmp_path, enabled=True, safety_mode="auto-safe", timeout_seconds=10
+        ),
+    )
+    loop = AgentLoop(client, registry, EventBus())
+
+    result = await loop.run([{"role": "user", "content": "fix answer"}], "model", "high")
+
+    assert [call["name"] for call in result.tool_calls] == ["file_edit", "bash", "run_lint", "run_test"]
+    assert result.tool_calls[2]["arguments"] == '{"command": "ruff check ."}'
+    assert result.tool_calls[3]["arguments"] == '{"command": "python -m pytest -q ./tests/test_app.py"}'
+    assert result.automatic_verification == {"compile": 1, "lint": 1, "test": 1, "total": 3}
+    assert result.content == "verified"
 
 
 @pytest.mark.asyncio

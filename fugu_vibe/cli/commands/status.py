@@ -169,6 +169,16 @@ def _print_task_detail(task: dict) -> None:
         confidence = orchestration.get("routing_confidence")
         if confidence is not None:
             table.add_row("Routing Confidence", f"{confidence:.0%}" if isinstance(confidence, float) else str(confidence))
+    verification = task.get("automatic_verification", {})
+    if verification:
+        table.add_row(
+            "Auto Checks",
+            (
+                f"{verification.get('total', 0)} total "
+                f"(compile {verification.get('compile', 0)} / "
+                f"lint {verification.get('lint', 0)} / test {verification.get('test', 0)})"
+            ),
+        )
 
     table.add_row("Worktree", task.get("worktree", "-"))
 

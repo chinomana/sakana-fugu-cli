@@ -544,6 +544,8 @@ class TaskManager:
                 auto_test_after_edit=self.config.tools.auto_test_after_edit,
                 auto_test_command=self.config.tools.auto_test_command,
                 auto_compile_after_edit=self.config.tools.auto_compile_after_edit,
+                auto_lint_after_edit=self.config.tools.auto_lint_after_edit,
+                auto_lint_command=self.config.tools.auto_lint_command,
             )
             result = await loop.run(
                 messages=messages,
@@ -569,6 +571,7 @@ class TaskManager:
                     "rounds": result.rounds,
                     "tool_calls": result.tool_calls,
                     "tool_call_count": len(result.tool_calls),
+                    "automatic_verification": result.automatic_verification,
                     "orchestration": {
                         "workers": len(analyzer.state.workers),
                         "verifications": analyzer.state.verification_count,
@@ -645,6 +648,7 @@ class TaskManager:
             "rounds": metadata.get("rounds", 0),
             "tool_call_count": metadata.get("tool_call_count", 0),
             "tool_calls": metadata.get("tool_calls", []),
+            "automatic_verification": metadata.get("automatic_verification", {}),
             "orchestration": metadata.get("orchestration", {}),
             "metadata": metadata,
         }
