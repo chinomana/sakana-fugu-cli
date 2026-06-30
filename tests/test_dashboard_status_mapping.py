@@ -75,3 +75,28 @@ def test_dashboard_maps_failed_validation_to_repairing_state() -> None:
     assert dashboard._last_result_text == (
         "Python syntax check failed: IndentationError: expected an indented block"
     )
+
+
+def test_dashboard_renders_automatic_verification_summary() -> None:
+    dashboard = make_dashboard()
+
+    dashboard._on_agent_round_end(
+        Event(
+            EventType.AGENT_ROUND_END,
+            {
+                "round": 1,
+                "automatic_verification": {
+                    "compile": 1,
+                    "lint": 1,
+                    "test": 1,
+                    "total": 3,
+                    "failed": 1,
+                    "status": "failed",
+                    "failures": [{"tool": "run_test", "summary": "1 failed"}],
+                },
+            },
+        )
+    )
+
+    assert dashboard._verification_text() == "3 total · compile 1 · lint 1 · test 1 · 1 failed"
+

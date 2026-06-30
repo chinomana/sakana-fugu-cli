@@ -171,14 +171,32 @@ def _print_task_detail(task: dict) -> None:
             table.add_row("Routing Confidence", f"{confidence:.0%}" if isinstance(confidence, float) else str(confidence))
     verification = task.get("automatic_verification", {})
     if verification:
+        status = verification.get("status", "not_run")
+        failed = int(verification.get("failed", 0) or 0)
+        if failed and status != "failed":
+            outcome = f"{status}, {failed} failed"
+        elif failed:
+            outcome = f"failed, {failed} failed"
+        else:
+            outcome = str(status)
         table.add_row(
             "Auto Checks",
             (
                 f"{verification.get('total', 0)} total "
                 f"(compile {verification.get('compile', 0)} / "
-                f"lint {verification.get('lint', 0)} / test {verification.get('test', 0)})"
+                f"lint {verification.get('lint', 0)} / test {verification.get('test', 0)}), "
+                f"{outcome}"
             ),
         )
+        failures = verification.get("failures")
+        if isinstance(failures, list) and failures:
+            failure_lines = [
+                f"{item.get('tool', 'check')}: {item.get('summary', 'failed')}"
+                for item in failures[:3]
+                if isinstance(item, dict)
+            ]
+            if failure_lines:
+                table.add_row("Auto Failures", "\n".join(failure_lines))
 
     table.add_row("Worktree", task.get("worktree", "-"))
 

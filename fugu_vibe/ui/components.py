@@ -220,11 +220,20 @@ class TaskTree:
 
             verification = task.get("automatic_verification") or {}
             if verification:
+                failed = int(verification.get("failed", 0) or 0)
+                status = str(verification.get("status", "not_run"))
+                if failed and status != "failed":
+                    suffix = f", {status}, {failed} failed"
+                elif failed:
+                    suffix = f", {failed} failed"
+                else:
+                    suffix = f", {status}"
                 node.add(
                     "🧪 auto checks "
                     f"{verification.get('total', 0)} "
                     f"(compile {verification.get('compile', 0)}, "
-                    f"lint {verification.get('lint', 0)}, test {verification.get('test', 0)})"
+                    f"lint {verification.get('lint', 0)}, test {verification.get('test', 0)}"
+                    f"{suffix})"
                 )
 
             deps = task.get("depends_on", [])

@@ -426,7 +426,7 @@ source .venv/bin/activate
 uv pip install -e ".[dev]"
 
 pytest
-ruff check .
+python -m ruff check .
 mypy fugu_vibe/
 ```
 

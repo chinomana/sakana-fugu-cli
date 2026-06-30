@@ -66,7 +66,15 @@ async def test_agent_loop_auto_runs_tests_after_file_edit(tmp_path: Path) -> Non
 
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello\n"
     assert [call["name"] for call in result.tool_calls] == ["file_write", "run_test"]
-    assert result.automatic_verification == {"compile": 0, "lint": 0, "test": 1, "total": 1}
+    assert result.automatic_verification == {
+        "compile": 0,
+        "lint": 0,
+        "test": 1,
+        "total": 1,
+        "failed": 0,
+        "status": "passed",
+        "failures": [],
+    }
     assert result.content == "finished"
     assert {schema["name"] for schema in client.calls[0]["tools"]} >= {
         "file_write",
@@ -114,7 +122,14 @@ async def test_agent_loop_auto_compiles_python_edits_and_repairs(tmp_path: Path)
         "bash",
         "run_lint",
     ]
-    assert result.automatic_verification == {"compile": 2, "lint": 1, "test": 0, "total": 3}
+    assert result.automatic_verification["compile"] == 2
+    assert result.automatic_verification["lint"] == 1
+    assert result.automatic_verification["test"] == 0
+    assert result.automatic_verification["total"] == 3
+    assert result.automatic_verification["failed"] == 1
+    assert result.automatic_verification["status"] == "recovered"
+    assert result.automatic_verification["failures"][0]["tool"] == "bash"
+    assert "IndentationError" in result.automatic_verification["failures"][0]["summary"]
     assert result.tool_calls[1]["arguments"] == '{"command": "python -m py_compile ./game.py"}'
     assert any("IndentationError" in message.get("output", "") for message in client.calls[1]["messages"])
     assert any("Automatic verification failed" in message.get("content", "") for message in client.calls[1]["messages"])
@@ -153,9 +168,17 @@ async def test_agent_loop_auto_lints_and_targets_existing_pytest_file(tmp_path: 
     result = await loop.run([{"role": "user", "content": "fix answer"}], "model", "high")
 
     assert [call["name"] for call in result.tool_calls] == ["file_edit", "bash", "run_lint", "run_test"]
-    assert result.tool_calls[2]["arguments"] == '{"command": "ruff check ."}'
+    assert result.tool_calls[2]["arguments"] == '{"command": "python -m ruff check ."}'
     assert result.tool_calls[3]["arguments"] == '{"command": "python -m pytest -q ./tests/test_app.py"}'
-    assert result.automatic_verification == {"compile": 1, "lint": 1, "test": 1, "total": 3}
+    assert result.automatic_verification == {
+        "compile": 1,
+        "lint": 1,
+        "test": 1,
+        "total": 3,
+        "failed": 0,
+        "status": "passed",
+        "failures": [],
+    }
     assert result.content == "verified"
 
 

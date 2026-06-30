@@ -144,7 +144,7 @@ class ToolRegistry:
                         "run_lint",
                         "Run the project's lint/type-check command and return structured results.",
                         {
-                            "command": {"type": "string", "default": "ruff check ."},
+                            "command": {"type": "string", "default": "python -m ruff check ."},
                             "cwd": {"type": "string", "default": "."},
                         },
                     ),
@@ -296,7 +296,7 @@ class ToolRegistry:
             if name == "run_lint":
                 approved = await self.approve_terminal_operation(name, args)
                 result = await self._run_terminal(
-                    str(args.get("command", "ruff check .")),
+                    str(args.get("command", "python -m ruff check .")),
                     str(args.get("cwd", ".")),
                     approved=approved,
                 )

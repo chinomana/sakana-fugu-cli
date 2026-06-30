@@ -76,6 +76,7 @@ class OrchestrationDashboard:
         self._last_tool_summary = ""
         self._last_result_text = ""
         self._last_mutated_paths: list[str] = []
+        self._automatic_verification: dict[str, object] = {}
         self._running = False
         self._live: Live | None = None
         self._update_task: asyncio.Task | None = None
@@ -273,8 +274,30 @@ class OrchestrationDashboard:
         table.add_row("Tools", f"{self._tool_count} {'available' if self._tools_enabled else 'disabled'}")
         table.add_row("Tool", self._current_tool or "-")
         table.add_row("Last result", self._last_result_text or "-")
+        table.add_row("Auto checks", self._verification_text())
         table.add_row("Changed", ", ".join(self._last_mutated_paths[-3:]) or "-")
         return table
+
+    def _verification_text(self) -> str:
+        if not self._automatic_verification:
+            return "-"
+        total = int(self._automatic_verification.get("total", 0) or 0)
+        failed = int(self._automatic_verification.get("failed", 0) or 0)
+        status = str(self._automatic_verification.get("status", "not_run"))
+        if failed and status != "failed":
+            outcome = f"{status}, {failed} failed"
+        elif failed:
+            outcome = f"{failed} failed"
+        else:
+            outcome = status
+        parts = [
+            f"{total} total",
+            f"compile {self._automatic_verification.get('compile', 0)}",
+            f"lint {self._automatic_verification.get('lint', 0)}",
+            f"test {self._automatic_verification.get('test', 0)}",
+            outcome,
+        ]
+        return " · ".join(parts)
 
     def _render_footer(self) -> Text:
         """Render status footer."""
@@ -310,6 +333,7 @@ class OrchestrationDashboard:
 
     def _on_agent_round_end(self, event: Event) -> None:
         self._agent_status = "thinking"
+        self._update_verification(event.data.get("automatic_verification"))
         paths = event.data.get("mutated_paths")
         if isinstance(paths, list):
             self._last_mutated_paths = [str(path) for path in paths]
@@ -320,15 +344,21 @@ class OrchestrationDashboard:
     def _on_agent_done(self, event: Event) -> None:
         self._agent_status = "done"
         self._current_tool = ""
+        self._update_verification(event.data.get("automatic_verification"))
         self._current_action = "Finished and ready to summarize"
         self.timeline.add_event("✅", "Agent completed", "green")
 
     def _on_agent_stopped(self, event: Event) -> None:
         self._agent_status = "stopped"
         self._current_tool = ""
+        self._update_verification(event.data.get("automatic_verification"))
         reason = event.data.get("reason", "stopped")
         self._current_action = f"Stopped: {reason}"
         self.timeline.add_event("🛑", f"Agent stopped: {reason}", "red")
+
+    def _update_verification(self, verification: object) -> None:
+        if isinstance(verification, dict):
+            self._automatic_verification = verification
 
     def _on_worker(self, event: Event) -> None:
         self._orch_state.phase = OrchestrationPhase.WORKER_ACTIVE
@@ -452,7 +482,7 @@ class OrchestrationDashboard:
         if name == "run_test" or "pytest" in command:
             return f"{prefix}Running tests: {command or 'pytest'}"
         if name == "run_lint" or "ruff" in command:
-            return f"{prefix}Running lint: {command or 'ruff check .'}"
+            return f"{prefix}Running lint: {command or 'python -m ruff check .'}"
         if name == "bash" and "py_compile" in command:
             return f"{prefix}Checking Python syntax: {command}"
         if name == "bash":

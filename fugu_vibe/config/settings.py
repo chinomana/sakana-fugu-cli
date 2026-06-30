@@ -127,7 +127,7 @@ class ToolConfig(BaseSettings):
     auto_test_command: str = "python -m pytest -q"
     auto_compile_after_edit: bool = True
     auto_lint_after_edit: bool = True
-    auto_lint_command: str = "ruff check ."
+    auto_lint_command: str = "python -m ruff check ."
 
 
 class MCPConfig(BaseSettings):

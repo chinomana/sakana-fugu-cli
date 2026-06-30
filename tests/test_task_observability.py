@@ -45,7 +45,15 @@ async def test_task_status_exposes_observability_metadata(
             "rounds": 3,
             "tool_call_count": 2,
             "tool_calls": [{"name": "file_read"}, {"name": "run_test"}],
-            "automatic_verification": {"compile": 1, "lint": 1, "test": 1, "total": 3},
+            "automatic_verification": {
+                "compile": 1,
+                "lint": 1,
+                "test": 1,
+                "total": 3,
+                "failed": 0,
+                "status": "passed",
+                "failures": [],
+            },
             "orchestration": {
                 "workers": 2,
                 "verifications": 1,
@@ -58,7 +66,15 @@ async def test_task_status_exposes_observability_metadata(
     status = await manager.status(task.task_id)
 
     assert status["rounds"] == 3
-    assert status["automatic_verification"] == {"compile": 1, "lint": 1, "test": 1, "total": 3}
+    assert status["automatic_verification"] == {
+        "compile": 1,
+        "lint": 1,
+        "test": 1,
+        "total": 3,
+        "failed": 0,
+        "status": "passed",
+        "failures": [],
+    }
 
     assert status["tool_call_count"] == 2
     assert status["token_usage"]["total"] == 35
@@ -114,7 +130,15 @@ def test_task_tree_merges_updates_and_renders_observability_metrics() -> None:
             "tool_call_count": 4,
             "token_usage": {"input": 10, "output": 20, "orchestration": 5},
             "orchestration": {"workers": 1, "verifications": 2, "routing_confidence": 0.8},
-            "automatic_verification": {"compile": 1, "lint": 1, "test": 1, "total": 3},
+            "automatic_verification": {
+                "compile": 1,
+                "lint": 1,
+                "test": 1,
+                "total": 3,
+                "failed": 0,
+                "status": "passed",
+                "failures": [],
+            },
         }
     )
 
@@ -126,5 +150,5 @@ def test_task_tree_merges_updates_and_renders_observability_metrics() -> None:
     assert "Observe [fugu] · r2 · tools 4" in rendered
     assert "tokens 35" in rendered
     assert "workers 1, checks 2, confidence 80%" in rendered
-    assert "auto checks 3 (compile 1, lint 1, test 1)" in rendered
+    assert "auto checks 3 (compile 1, lint 1, test 1, passed)" in rendered
 

@@ -24,7 +24,7 @@ class StreamingClient(Protocol):
 
 DEFAULT_MAX_TOOL_ROUNDS = 10
 DEFAULT_AUTO_TEST_COMMAND = "python -m pytest -q"
-DEFAULT_AUTO_LINT_COMMAND = "ruff check ."
+DEFAULT_AUTO_LINT_COMMAND = "python -m ruff check ."
 MUTATING_TOOLS = {"file_write", "file_edit", "file_delete", "file_mkdir"}
 VALIDATION_TOOLS = {"run_test", "run_lint", "bash"}
 PYTHON_SUFFIXES = {".py", ".pyw"}
@@ -37,7 +37,7 @@ class AgentLoopResult:
     content: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     rounds: int = 0
-    automatic_verification: dict[str, int] = field(default_factory=dict)
+    automatic_verification: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -56,6 +56,8 @@ class AgentLoop:
     _auto_test_counter: int = field(default=0, init=False)
     _auto_compile_counter: int = field(default=0, init=False)
     _auto_lint_counter: int = field(default=0, init=False)
+    _auto_failures: list[dict[str, Any]] = field(default_factory=list, init=False)
+    _auto_last_failed: bool = field(default=False, init=False)
 
     async def run(
         self,
@@ -241,11 +243,17 @@ class AgentLoop:
                 if normalized_name in VALIDATION_TOOLS:
                     mutation_without_validation = False
             if mutation_without_validation:
+                self._auto_last_failed = False
                 verification_items = await self._run_auto_verification(mutated_paths)
                 verification_failed = False
                 for verification_call, verification_result in verification_items:
                     result.tool_calls.append(verification_call)
-                    verification_failed = verification_failed or not verification_result.get("ok")
+                    if not verification_result.get("ok"):
+                        verification_failed = True
+                        self._auto_last_failed = True
+                        self._auto_failures.append(
+                            self._verification_failure(verification_call, verification_result)
+                        )
                     current_messages.extend(
                         [
                             self._tool_call_items([verification_call], [])[0],
@@ -269,7 +277,7 @@ class AgentLoop:
                     "round": round_index + 1,
                     "tool_calls": len(new_tool_calls),
                     "mutated_paths": sorted(mutated_paths),
-                    "automatic_verification": self._verification_summary(),
+                    "automatic_verification": result.automatic_verification,
                 },
                 source="agent_loop",
             )
@@ -424,15 +432,52 @@ class AgentLoop:
     def _is_default_pytest_command(self, command: str) -> bool:
         return command in {"python -m pytest -q", "pytest -q", "python -m pytest", "pytest"}
 
-    def _verification_summary(self) -> dict[str, int]:
-        """Return automatic verification counters for events and task metadata."""
+    def _verification_summary(self) -> dict[str, Any]:
+        """Return automatic verification status for events and task metadata."""
         total = self._auto_compile_counter + self._auto_lint_counter + self._auto_test_counter
+        failed = self._auto_failures[-5:]
         return {
             "compile": self._auto_compile_counter,
             "lint": self._auto_lint_counter,
             "test": self._auto_test_counter,
             "total": total,
+            "failed": len(self._auto_failures),
+            "status": self._verification_status(total),
+            "failures": failed,
         }
+
+    def _verification_status(self, total: int) -> str:
+        if not total:
+            return "not_run"
+        if self._auto_last_failed:
+            return "failed"
+        return "recovered" if self._auto_failures else "passed"
+
+    def _verification_failure(
+        self,
+        tool_call: dict[str, Any],
+        tool_result: dict[str, Any],
+    ) -> dict[str, Any]:
+        arguments = self._tool_arguments(tool_call)
+        return {
+            "tool": str(tool_call.get("name", "")),
+            "command": str(arguments.get("command", "")),
+            "summary": self._tool_result_summary(tool_result),
+            "exit_code": tool_result.get("exit_code"),
+            "retryable": bool(tool_result.get("retryable", False)),
+        }
+
+    def _tool_arguments(self, tool_call: dict[str, Any]) -> dict[str, Any]:
+        raw_arguments = tool_call.get("arguments", {})
+        if isinstance(raw_arguments, dict):
+            return raw_arguments
+        if isinstance(raw_arguments, str) and raw_arguments.strip():
+            try:
+                parsed = json.loads(raw_arguments)
+            except json.JSONDecodeError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        return {}
 
     def _tool_result_message(
         self,

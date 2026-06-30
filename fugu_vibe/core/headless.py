@@ -33,7 +33,7 @@ class HeadlessResult:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     rounds: int = 0
     effort: str = "xhigh"
-    automatic_verification: dict[str, int] = field(default_factory=dict)
+    automatic_verification: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
